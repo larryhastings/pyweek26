@@ -7,6 +7,8 @@ import pyglet.window.key
 import pyglet.resource
 import sys
 import time
+import datetime
+import itertools
 
 
 srcdir = Path(__file__).parent
@@ -306,9 +308,25 @@ game = Game()
 level = Level()
 
 
+def screenshot_path():
+    root = Path.cwd()
+    grabs = root / 'grabs'
+    grabs.mkdir(exist_ok=True)
+    day = (datetime.date.today() - datetime.date(2018, 10, 20)).days
+    for n in itertools.count(1):
+        path = grabs / f'day{day}-{n}.png'
+        if not path.exists():
+            return str(path)
+
+
 @window.event
-def on_key_press(key, modifiers):
-    return game.on_key_press(key, modifiers)
+def on_key_press(symbol, modifiers):
+    if symbol == key.F12:
+        gl.glPixelTransferf(gl.GL_ALPHA_BIAS, 1.0)  # don't transfer alpha channel
+        image = pyglet.image.ColorBufferImage(0, 0, window.width, window.height)
+        image.save(screenshot_path())
+        gl.glPixelTransferf(gl.GL_ALPHA_BIAS, 0.0)  # restore alpha channel transfer
+    return game.on_key_press(symbol, modifiers)
 
 @window.event
 def on_key_release(key, modifiers):
