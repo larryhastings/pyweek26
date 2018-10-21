@@ -24,11 +24,11 @@
      pagecolor="#ffffff"
      bordercolor="#666666"
      borderopacity="1.0"
-     inkscape:pageopacity="0.0"
+     inkscape:pageopacity="0"
      inkscape:pageshadow="2"
      inkscape:zoom="1"
-     inkscape:cx="77.561866"
-     inkscape:cy="554.40173"
+     inkscape:cx="154.07369"
+     inkscape:cy="495.37635"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
      showgrid="true"
@@ -251,7 +251,7 @@
     <g
        id="g5352"
        transform="translate(-8.9461761,-0.75)"
-       inkscape:export-filename="/home/mauve/dev/pyweek26/images/pc-s.png"
+       inkscape:export-filename="/home/mauve/dev/pyweek26/src/images/pc-s.png"
        inkscape:export-xdpi="75.679588"
        inkscape:export-ydpi="75.679588">
       <use
@@ -912,7 +912,7 @@
        height="100%" />
     <g
        id="g5473"
-       inkscape:export-filename="/home/mauve/dev/pyweek26/images/pc-n.png"
+       inkscape:export-filename="/home/mauve/dev/pyweek26/src/images/pc-n.png"
        inkscape:export-xdpi="75.679588"
        inkscape:export-ydpi="75.679588">
       <path

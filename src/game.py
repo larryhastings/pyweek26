@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
 from enum import Enum
+from pathlib import Path
+from pyglet import gl
 import pyglet.window.key as key
 import pyglet.window.key
+import pyglet.resource
 import sys
 import time
+import datetime
+import itertools
+
+
+srcdir = Path(__file__).parent
+pyglet.resource.path = [
+    'images',
+]
+pyglet.resource.reindex()
 
 remapped_keys = {
     key.W: key.UP,
@@ -334,13 +346,70 @@ game = Game()
 level = Level()
 
 
+def screenshot_path():
+    root = Path.cwd()
+    grabs = root / 'grabs'
+    grabs.mkdir(exist_ok=True)
+    day = (datetime.date.today() - datetime.date(2018, 10, 20)).days
+    for n in itertools.count(1):
+        path = grabs / f'day{day}-{n}.png'
+        if not path.exists():
+            return str(path)
+
+
 @window.event
-def on_key_press(key, modifiers):
-    return game.on_key_press(key, modifiers)
+def on_key_press(symbol, modifiers):
+    if symbol == key.F12:
+        gl.glPixelTransferf(gl.GL_ALPHA_BIAS, 1.0)  # don't transfer alpha channel
+        image = pyglet.image.ColorBufferImage(0, 0, window.width, window.height)
+        image.save(screenshot_path())
+        gl.glPixelTransferf(gl.GL_ALPHA_BIAS, 0.0)  # restore alpha channel transfer
+    return game.on_key_press(symbol, modifiers)
 
 @window.event
 def on_key_release(key, modifiers):
     return game.on_key_release(key, modifiers)
+
+
+def load_pc(name):
+    """Load a PC sprite and set the anchor position."""
+    pc = pyglet.resource.image(name)
+    pc.anchor_x = pc.width // 2
+    pc.anchor_y = 10
+    return pc
+
+
+def load_tile(name):
+    """Load a ground tile and set the anchor position."""
+    img = pyglet.resource.image(name)
+    img.anchor_x = img.width // 2
+    img.anchor_y = img.height // 2
+    return img
+
+
+pc = load_pc('pc-s.png')
+grass = load_tile('grass.png')
+spr = pyglet.sprite.Sprite(pc)
+
+
+def map_to_screen(pos):
+    x, y = pos
+    return x * 64 + 100, window.height - 100 - y * 40
+
+
+@window.event
+def on_draw():
+    gl.glClearColor(0.5, 0.55, 0.8, 0)
+    window.clear()
+    for y in range(map_height):
+        for x in range(map_width):
+            coord = x, y
+            t = level.map.get(coord)
+            if isinstance(t, MapLand):
+                grass.blit(*map_to_screen(coord))
+
+    spr.position = map_to_screen(level.player.position)
+    spr.draw()
 
 
 def timer_callback(dt):
