@@ -15,9 +15,19 @@ remapped_keys = {
     key.DOWN: key.DOWN,
     key.RIGHT: key.RIGHT,
     key.ESCAPE: key.ESCAPE,
+    key.ENTER: key.ENTER,
     }
-
 interesting_key = remapped_keys.get
+
+_key_repr = {
+    key.UP: "Up",
+    key.LEFT: "Left",
+    key.DOWN: "Down",
+    key.RIGHT: "Right",
+    key.ESCAPE: "Escape",
+    key.ENTER: "Enter",
+    }
+key_repr = _key_repr.get
 
 map_legend = {}
 
@@ -64,6 +74,8 @@ map_text = """
 .##.##........................
 ..............................
 """
+# .S#.##^.......................
+# .S###########################.
 
 map = []
 
@@ -105,41 +117,47 @@ class GameState(Enum):
 
 
 class Ticker:
-    def __init__(self, name, hz, callback, *, delay=0):
+    def __init__(self, name, frequency, callback, *, delay=0):
+        assert isinstance(frequency, (int, float)) and frequency, "must supply a valid (nonzero) frequency!  got " + repr(frequency)
         self.name = name
+        self.frequency = frequency
         self.callback = callback
         # initial delay
         self.delay = delay
-        self.hz = hz
         self.reset()
 
     # dt is fractional seconds e.g. 0.001357
     def advance(self, dt):
-        old_elapsed = self.elapsed
-        self.elapsed += dt * self.hz
-        # print("ADVANCING", self.name, old_elapsed, "=>", self.elapsed, self.delaying, self.delay)
+        self.accumulator += dt
+        self.elapsed += dt
         callbacks = 0
-        if self.delaying:
-            if self.elapsed < self.delay:
-                # print("TOO SOON", self.elapsed, "<", self.delay)
-                return
-            self.delaying = False
-            self.elapsed -= self.delay
-            # print("FINISHED DELAY, CALLING CALLBACK", self.name, self.callback)
-            self.callback()
-            callbacks += 1
-        floored_elapsed = int(self.elapsed)
-        while self.counter < floored_elapsed:
-            # print("CALLING CALLBACK", self.name, self.callback)
+        while self.accumulator >= self.next:
+            # log(f"{self.name} {self.counter} {self.elapsed}")
             self.callback()
             self.counter += 1
             callbacks += 1
+            self.accumulator -= self.next
+            self.next = self.frequency
         return callbacks
 
     def reset(self):
-        self.counter = self.elapsed = 0
-        self.delaying = bool(self.delay)
+        self.counter = 0
+        self.elapsed = self.accumulator = 0.0
+        self.next = self.delay or self.frequency
 
+
+_log = []
+log_start = time.time()
+def log(*a):
+    t = time.time()
+    s = " ".join(str(x) for x in a)
+    _log.append((t, s))
+
+def dump_log():
+    print()
+    for t, s in _log:
+        t -= log_start
+        print(f"[{t:8.4f}] {s}")
 
 class Game:
     def __init__(self):
@@ -150,27 +168,37 @@ class Game:
         self.old_state = self.state = GameState.INVALID
         self.transition_to(GameState.PLAYING)
 
-        self.renders = Ticker("render", 4, self.render)
-        self.logics = Ticker("logic", 120, self.logic)
+        # self.renders = Ticker("render", 1/4, self.render)
+        self.last_render = -1000
+        self.renders = 0
+        self.logics = Ticker("logic", 1/120, self.logic)
 
         self.key_handler = self
 
-        def make_repeater(name, key):
+        def make_repeater(key):
             def callback():
                 self.on_key(key)
             return callback
 
         self.repeaters = {}
-        for name, k in (
-            ("up", key.UP),
-            ("down", key.DOWN),
-            ("left", key.LEFT),
-            ("right", key.RIGHT),
+        for k in (
+            key.UP,
+            key.DOWN,
+            key.LEFT,
+            key.RIGHT,
             ):
-            rk = make_repeater(name, k)
-            repeater = Ticker(name + " repeater", 4, rk, delay=1)
+            rk = make_repeater(k)
+            repeater = Ticker(key_repr(k) + " repeater", 1/4, rk, delay=1.0)
             repeater.key = k
             self.repeaters[k] = repeater
+
+    def invalidate_screen(self):
+        log("invalidate screen")
+        t = time.time()
+        delta = t - self.last_render
+        if delta >= 1/8:
+            self.last_render = t
+            self.render()
 
 
     def timer(self, dt):
@@ -181,7 +209,7 @@ class Game:
         if self.state == GameState.PLAYING:
             self.logics.advance(dt)
 
-        self.renders.advance(dt)
+        # self.renders.advance(dt)
 
     def on_state_PLAYING(self):
         print("playing! ")
@@ -194,6 +222,9 @@ class Game:
             handler()
 
     def render(self):
+        # log("render", self.renders.counter)
+        log("render", self.renders)
+        self.renders += 1
         level.render()
 
     def logic(self):
@@ -206,6 +237,7 @@ class Game:
             # (we can't use pyglet's on_text_motion because we want this for WASD too)
             repeater = game.repeaters.get(k)
             if repeater:
+                log(f"starting repeater {key_repr(repeater.key)}")
                 repeater.reset()
                 self.repeater = repeater
             return self.key_handler.on_key(k)
@@ -214,6 +246,7 @@ class Game:
         k = interesting_key(k)
         if k:
             if self.repeater and self.repeater.key == k:
+                log(f"removing repeater {key_repr(self.repeater.key)}")
                 self.repeater = None
 
     def on_key(self, k):
@@ -223,9 +256,10 @@ class Game:
             return self.key_handler.on_key(k)
 
 
+clear_screen_s = "\033[2J\033[H"
+#clear_screen_s = ""
 def clear_screen():
-    print("\033[2J\033[H", end="")
-    # pass
+    print(clear_screen_s, end="")
 
 class Level:
     def __init__(self):
@@ -242,10 +276,9 @@ class Level:
                 self.map[coord] = tile
 
     def render(self):
-        clear_screen()
+        # clear_screen()
         elapsed = time.time() - self.start
-        print(f"{elapsed:05.1f}")
-        text = []
+        text = [clear_screen_s, f"{elapsed:05.1f}\n"]
         for y in range(map_height):
             for x in range(map_width):
                 coord = x, y
@@ -255,8 +288,9 @@ class Level:
                 tile = self.map[coord]
                 text.append(tile.legend)
             text.append("\n")
-        print("".join(text))
-        print("player", self.player.position)
+        text.append(f"player {self.player.position}")
+        sys.stdout.write("".join(text))
+        sys.stdout.flush()
         # if game.repeater:
             # print("repeater now set for key", game.repeater.key)
 
@@ -266,6 +300,9 @@ class Player:
         game.key_handler = self
 
     def on_key(self, k):
+        r = key_repr(k)
+        t = time.time()
+        log(f"{r}")
         x, y = self.position
         leap_x, leap_y = x, y
         if k == key.UP:
@@ -288,6 +325,7 @@ class Player:
             if (not tile) or isinstance(tile, MapWater):
                 return
         self.position = new_coord
+        game.invalidate_screen()
 
 
 
@@ -308,5 +346,9 @@ def on_key_release(key, modifiers):
 def timer_callback(dt):
     game.timer(dt)
 
-pyglet.clock.schedule_interval(timer_callback, 1/240)
+
+game.invalidate_screen()
+pyglet.clock.schedule_interval(timer_callback, 1/250)
 pyglet.app.run()
+
+dump_log()
