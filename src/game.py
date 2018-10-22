@@ -2,6 +2,7 @@
 from enum import Enum
 from pathlib import Path
 from pyglet import gl
+import pyglet.image
 import pyglet.window.key as key
 import pyglet.window.key
 import pyglet.resource
@@ -123,13 +124,13 @@ class MapSpawnPoint(MapTile):
 
 map_text = """
 ......X.......................
+..#.##^.......................
+.##.##^.......................
+.#...#^.......................
 .##.##^.......................
 .##.##^.......................
-.##.##^.......................
-.##.##^.......................
-.##.##^.......................
-.S#.##^.......................
-.##.##........................
+.S#.##^##.....................
+.##.####......................
 ..............................
 """
 # .S#.##^.......................
@@ -343,6 +344,28 @@ class Game:
 
 
 class Level:
+    tiles = pyglet.image.ImageGrid(
+        pyglet.resource.image('tilemap.png'),
+        rows=8,
+        columns=5,
+    ).get_texture_sequence()
+    tilemap = {
+        0b0000: (0, 3),
+        0b0001: (2, 2),
+        0b0010: (2, 0),
+        0b0011: (2, 1),
+        0b0100: (0, 0),
+        0b0110: (1, 0),
+        0b0111: (3, 1),
+        0b1000: (0, 2),
+        0b1001: (1, 2),
+        0b1011: (3, 0),
+        0b1100: (0, 1),
+        0b1101: (4, 0),
+        0b1110: (4, 1),
+        0b1111: (1, 1),
+    }
+
     def __init__(self):
         self.start = time.time()
         self.map = {}
@@ -355,9 +378,40 @@ class Level:
                     player_position = coord
                     tile = MapLand()
                 self.map[coord] = tile
+
         if not player_position:
             sys.exit("No player position set!")
         self.player = Player(player_position)
+
+        self.build_batch()
+
+    def build_batch(self):
+        batch = pyglet.graphics.Batch()
+        sprites = []
+        def q(x, y):
+            t = self.map.get((x, y))
+            return isinstance(t, MapLand)
+        for y in range(map_height):
+            for x in range(map_width):
+                bitv = (
+                    q(x, y) |
+                    q(x, y - 1) << 1 |
+                    q(x + 1, y - 1) << 2 |
+                    q(x + 1, y) << 3
+                )
+                screenx, screeny = map_to_screen((x, y))
+                tx, ty = self.tilemap[bitv]
+                sprites.append(
+                    pyglet.sprite.Sprite(
+                        self.tiles[ty, tx],
+                        x=screenx,
+                        y=screeny,
+                        batch=batch,
+                    )
+                )
+        self.batch = batch
+        self.sprites = sprites
+
 
 
 class PlayerOrientation(Enum):
@@ -479,6 +533,11 @@ class TimedBomb(Bomb):
 
 
 window = pyglet.window.Window()
+
+def map_to_screen(pos):
+    x, y = pos
+    return x * tiles_x + 100, window.height - 100 - y * tiles_y
+
 game = Game()
 level = Level()
 
@@ -522,21 +581,18 @@ pc_sprite = {
 
 grass = load_tile('grass.png')
 
-def map_to_screen(pos):
-    x, y = pos
-    return x * tiles_x + 100, window.height - 100 - y * tiles_y
-
 
 @window.event
 def on_draw():
     gl.glClearColor(0.5, 0.55, 0.8, 0)
     window.clear()
-    for y in range(map_height):
-        for x in range(map_width):
-            coord = x, y
-            t = level.map.get(coord)
-            if isinstance(t, MapLand):
-                grass.blit(*map_to_screen(coord))
+    level.batch.draw()
+#    for y in range(map_height):
+#        for x in range(map_width):
+#            coord = x, y
+#            t = level.map.get(coord)
+#            if isinstance(t, MapLand):
+#                grass.blit(*map_to_screen(coord))
 
     if not (level and level.player):
         return
