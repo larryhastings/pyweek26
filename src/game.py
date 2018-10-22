@@ -536,13 +536,16 @@ class Animator:
         """
         self.clock = clock
 
-    def animate(self, start, end, interval, callback=None):
+    def animate(self, start, end, interval, callback=None, halfway_callback=None):
         self.start = start
         self.end = end
         self.interval = interval
         self.callback = callback
+        self.halfway_callback = halfway_callback
 
         self.timer = Timer("animator", self.clock, interval, self._complete)
+        if halfway_callback:
+            self.halfway_timer = Timer("animator halfway", self.clock, interval / 2, self._halfway)
         self.finished = False
 
         self.delta_x = end[0] - start[0]
@@ -551,6 +554,9 @@ class Animator:
     @property
     def ratio(self):
         return self.timer.ratio
+
+    def _halfway(self):
+        self.halfway_callback()
 
     def _complete(self):
         self.finished = True
@@ -639,9 +645,11 @@ class Player:
         self.halfway_timer = None
         self.moving = False
 
-    def _finished_animation(self):
-        self.moving = False
+    def _animation_halfway(self):
         self.position = self.new_position
+
+    def _animation_finished(self):
+        self.moving = False
         self.screen_position = self.animator.position
 
     def on_key(self, k):
@@ -689,7 +697,8 @@ class Player:
             map_to_screen(self.position),
             map_to_screen(new_position),
             player_movement_logics,
-            self._finished_animation)
+            self._animation_finished,
+            self._animation_halfway)
 
     def render(self):
         spr = pc_sprite[level.player.orientation]
