@@ -13,10 +13,9 @@ import pyglet.window.key as key
 import pyglet.window.key
 import pyglet.resource
 
-
-# how big a tile is: 64 pixels wide x 40 pixels tall
-tiles_x = 64
-tiles_y = 40
+from dynamite import coords
+from dynamite.coords import map_to_screen
+from dynamite.particles import FlowParticles
 
 timed_bomb_interval = 3
 exploding_bomb_interval = 1/10
@@ -40,6 +39,8 @@ pyglet.resource.path = [
 ]
 pyglet.resource.reindex()
 
+
+FlowParticles.load()
 
 def load_sprite(name):
     """Load a sprite and set the anchor position."""
@@ -105,11 +106,12 @@ def legend(c):
     return decorator
 
 class MapTile:
-    pass
+    water = False
 
 @legend(".")
 class MapWater(MapTile):
     current = (0, 0)
+    water = True
 
 @legend("^")
 class MapWaterCurrentUp(MapWater):
@@ -129,7 +131,8 @@ class MapWaterCurrentDown(MapWater):
 
 @legend("X")
 class MapBlockage(MapTile):
-    pass
+    current = (0, 0)
+    water = True
 
 @legend("#")
 class MapLand(MapTile):
@@ -429,7 +432,7 @@ class Level:
         sprites = []
         def q(x, y):
             t = self.map.get((x, y))
-            return isinstance(t, MapLand)
+            return bool(t and not t.water)
         for x, y in self.coords():
             bitv = (
                 q(x, y) |
@@ -451,81 +454,6 @@ class Level:
         self.sprites = sprites
 
 
-class FlowParticles:
-    ripple = pyglet.resource.image('ripple.png')
-    RATE = 10
-
-    def __init__(self, level):
-        self.level = level
-        self.batch = pyglet.graphics.Batch()
-        self.particles = []
-
-    def update(self, dt):
-        water_tiles = {}
-        for pos in self.level.coords():
-            t = self.level.map.get(pos)
-            if t is None:
-                water_tiles[pos] = (0, 0)
-            elif isinstance(t, MapWater):
-                water_tiles[pos] = t.current
-
-        new_particles = []
-        for p in self.particles:
-            p.age += dt
-            if p.age > 4:
-                continue
-
-            if p.age < 1:
-                p.opacity = p.age * p.bright
-            elif p.age > 3:
-                p.opacity = (4 - p.age) * p.bright
-
-            x, y = p.map_pos
-            current = water_tiles.get((round(x), round(y)))
-            if not current:
-                continue
-            curx, cury = current
-
-            vx, vy = p.v
-
-            frac = 0.5 ** dt
-            invfrac = 1.0 - frac
-            vx = frac * vx + invfrac * curx
-            vy = frac * vy + invfrac * cury
-
-            p.v = vx, vy
-            x += vx * dt * 0.3
-            y += vy * dt * 0.3
-            p.map_pos = x, y
-            p.position = map_to_screen(p.map_pos)
-            new_particles.append(p)
-
-        for (tx, ty), current in water_tiles.items():
-            if random.uniform(0, 3) > dt:
-                continue
-            x = random.uniform(tx - 0.5, tx + 0.5)
-            y = random.uniform(ty - 0.5, ty + 0.5)
-
-            map_pos = x, y
-            sx, sy = map_to_screen(map_pos)
-            p = pyglet.sprite.Sprite(
-                self.ripple,
-                sx,
-                sy,
-                batch=self.batch
-            )
-            p.age = 0
-            p.bright = random.uniform(128, 255)
-            cx, cy = current
-            p.v = (
-                cx + random.uniform(-0.5, 0.5),
-                cy + random.uniform(-0.5, 0.5)
-            )
-            p.opacity = 0
-            p.scale = random.uniform(0.2, 0.3)
-            p.map_pos = map_pos
-            new_particles.append(p)
-        self.particles = new_particles
 
 
 
@@ -628,9 +556,9 @@ class Player:
         # |  R  |  L  |
         # +-----------+
         x, y = position
-        if y <= (tiles_y // 2):
+        if y <= coords.TILES_H // 2:
             self.orientation = PlayerOrientation.DOWN
-        elif x <= (tiles_x // 2):
+        elif x <= coords.TILES_W // 2:
             self.orientation = PlayerOrientation.RIGHT
         else:
             self.orientation = PlayerOrientation.LEFT
@@ -733,11 +661,7 @@ class TimedBomb(Bomb):
         self.sprite.position = map_to_screen(position)
 
 
-window = pyglet.window.Window()
-
-def map_to_screen(pos):
-    x, y = pos
-    return x * tiles_x + 100, window.height - 100 - y * tiles_y
+window = pyglet.window.Window(coords.WIDTH, coords.HEIGHT)
 
 game = Game()
 level = Level(map_width, map_height)
