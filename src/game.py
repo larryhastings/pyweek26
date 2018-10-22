@@ -11,13 +11,14 @@ import datetime
 import itertools
 
 
+# how big a tile is: 64 pixels wide x 40 pixels tall
 tiles_x = 64
 tiles_y = 40
 
 timed_bomb_interval = 3
 exploding_bomb_interval = 1/10
 
-logic_interval = 1/10
+logic_interval = 1/120
 
 typematic_interval = 1/4
 typematic_delay = 1
@@ -172,9 +173,52 @@ class GameState(Enum):
     GAME_WON = 8
     CONFIRM_EXIT = 9
 
+class Timer:
+    def __init__(self, name, delay, callback):
+        self.name = name
+        self.delay = delay
+        self.callback = callback
+        self.reset()
+
+    def reset(self):
+        self.elapsed = 0
+
+    def advance(self, dt):
+        if self.elapsed < self.delay:
+            self.elapsed += dt
+            if self.elapsed >= self.delay:
+                self.elapsed = self.delay
+                self.callback()
+
+    @property
+    def ratio(self):
+        return self.elapsed / self.delay
+
 
 class Ticker:
     def __init__(self, name, frequency, callback, *, delay=0):
+        """
+        frequency is a bad name, but this is how often to tick
+        expressed in seconds.  fractional seconds are allowed (as floats).
+
+        delay is how long to wait before the first tick, if not the
+        same as frequency.
+
+        examples:
+        Ticker(frequency=0.25)
+          Ticks four times a second.
+
+        Ticker(frequency=0.5, delay=0.8)
+          Ticks twice a second.  The first tick is at 0.8 seconds,
+          the second at 1.3 seconds, the third at 1.8 seconds, etc.
+
+        Tickers are not automatic.  You must explicitly call advance()
+        to tell them that time has elapsed.
+
+        Note that Ticker doesn't actually care what units the times
+        are expressed in.  I called 'em seconds but they could just as
+        easily be anything else (milliseconds, years, frames).
+        """
         assert isinstance(frequency, (int, float)) and frequency, "must supply a valid (nonzero) frequency!  got " + repr(frequency)
         self.name = name
         self.frequency = frequency
@@ -200,6 +244,7 @@ class Ticker:
         self.counter = 0
         self.elapsed = self.accumulator = 0.0
         self.next = self.delay or self.frequency
+
 
 
 _log = []
