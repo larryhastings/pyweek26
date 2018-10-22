@@ -11,6 +11,16 @@ import datetime
 import itertools
 
 
+logic_interval = 1/10
+
+typematic_interval = 1/4
+typematic_delay = 1
+
+# please ensure all the other intervals
+# are evenly divisible into this interval
+callback_interval = 1/20
+
+
 srcdir = Path(__file__).parent
 pyglet.resource.path = [
     'images',
@@ -144,7 +154,6 @@ class Ticker:
         self.elapsed += dt
         callbacks = 0
         while self.accumulator >= self.next:
-            # log(f"{self.name} {self.counter} {self.elapsed}")
             self.callback()
             self.counter += 1
             callbacks += 1
@@ -183,7 +192,8 @@ class Game:
         # self.renders = Ticker("render", 1/4, self.render)
         self.last_render = -1000
         self.renders = 0
-        self.logics = Ticker("logic", 1/120, self.logic)
+
+        self.logics = Ticker("logic", logic_interval, self.logic)
 
         self.key_handler = self
 
@@ -200,31 +210,19 @@ class Game:
             key.RIGHT,
             ):
             rk = make_repeater(k)
-            repeater = Ticker(key_repr(k) + " repeater", 1/4, rk, delay=1.0)
+            repeater = Ticker(key_repr(k) + " repeater", typematic_interval, rk, delay=typematic_delay)
             repeater.key = k
             self.repeaters[k] = repeater
 
-    def invalidate_screen(self):
-        log("invalidate screen")
-        t = time.time()
-        delta = t - self.last_render
-        if delta >= 1/8:
-            self.last_render = t
-            self.render()
-
-
     def timer(self, dt):
-        # print("TIMER", dt)
         if self.repeater:
             self.repeater.advance(dt)
 
         if self.state == GameState.PLAYING:
             self.logics.advance(dt)
 
-        # self.renders.advance(dt)
 
     def on_state_PLAYING(self):
-        print("playing! ")
         pass
 
     def transition_to(self, new_state):
@@ -234,8 +232,6 @@ class Game:
             handler()
 
     def render(self):
-        # log("render", self.renders.counter)
-        log("render", self.renders)
         self.renders += 1
         level.render()
 
@@ -249,7 +245,6 @@ class Game:
             # (we can't use pyglet's on_text_motion because we want this for WASD too)
             repeater = game.repeaters.get(k)
             if repeater:
-                log(f"starting repeater {key_repr(repeater.key)}")
                 repeater.reset()
                 self.repeater = repeater
             return self.key_handler.on_key(k)
@@ -258,7 +253,6 @@ class Game:
         k = interesting_key(k)
         if k:
             if self.repeater and self.repeater.key == k:
-                log(f"removing repeater {key_repr(self.repeater.key)}")
                 self.repeater = None
 
     def on_key(self, k):
@@ -267,11 +261,6 @@ class Game:
         if k:
             return self.key_handler.on_key(k)
 
-
-clear_screen_s = "\033[2J\033[H"
-#clear_screen_s = ""
-def clear_screen():
-    print(clear_screen_s, end="")
 
 class Level:
     def __init__(self):
@@ -287,57 +276,33 @@ class Level:
                     tile = MapLand()
                 self.map[coord] = tile
 
-    def render(self):
-        # clear_screen()
-        elapsed = time.time() - self.start
-        text = [clear_screen_s, f"{elapsed:05.1f}\n"]
-        for y in range(map_height):
-            for x in range(map_width):
-                coord = x, y
-                if self.player.position == coord:
-                    text.append("O")
-                    continue
-                tile = self.map[coord]
-                text.append(tile.legend)
-            text.append("\n")
-        text.append(f"player {self.player.position}")
-        sys.stdout.write("".join(text))
-        sys.stdout.flush()
-        # if game.repeater:
-            # print("repeater now set for key", game.repeater.key)
 
+key_to_movement_delta = {
+    key.UP:    ( 0, -1),
+    key.DOWN:  ( 0, +1),
+    key.LEFT:  (-1,  0),
+    key.RIGHT: (+1,  0),
+    }
 
 class Player:
     def __init__(self):
         game.key_handler = self
 
     def on_key(self, k):
-        r = key_repr(k)
-        t = time.time()
-        log(f"{r}")
+        delta = key_to_movement_delta.get(k)
+        if not delta:
+            return
         x, y = self.position
-        leap_x, leap_y = x, y
-        if k == key.UP:
-            y = y - 1
-            leap_y = y - 2
-        if k == key.DOWN:
-            y = y + 1
-            leap_y = y + 2
-        if k == key.LEFT:
-            x = x - 1
-            leap_x = x - 2
-        if k == key.RIGHT:
-            x = x + 1
-            leap_x = x + 2
-        new_coord = x, y
-        tile = map.get(new_coord)
+        delta_x, delta_y = delta
+        new_position = x + delta_x, y + delta_y
+        leap_position = x + (delta_x * 2), y + (delta_y * 2)
+        tile = map.get(new_position)
         if (not tile) or isinstance(tile, MapWater):
-            new_coord = leap_x, leap_y
-            tile = map.get(new_coord)
+            new_position = leap_position
+            tile = map.get(new_position)
             if (not tile) or isinstance(tile, MapWater):
                 return
-        self.position = new_coord
-        game.invalidate_screen()
+        self.position = new_position
 
 
 
@@ -358,17 +323,17 @@ def screenshot_path():
 
 
 @window.event
-def on_key_press(symbol, modifiers):
-    if symbol == key.F12:
+def on_key_press(k, modifiers):
+    if k == key.F12:
         gl.glPixelTransferf(gl.GL_ALPHA_BIAS, 1.0)  # don't transfer alpha channel
         image = pyglet.image.ColorBufferImage(0, 0, window.width, window.height)
         image.save(screenshot_path())
         gl.glPixelTransferf(gl.GL_ALPHA_BIAS, 0.0)  # restore alpha channel transfer
-    return game.on_key_press(symbol, modifiers)
+    return game.on_key_press(k, modifiers)
 
 @window.event
-def on_key_release(key, modifiers):
-    return game.on_key_release(key, modifiers)
+def on_key_release(k, modifiers):
+    return game.on_key_release(k, modifiers)
 
 
 def load_pc(name):
@@ -416,8 +381,7 @@ def timer_callback(dt):
     game.timer(dt)
 
 
-game.invalidate_screen()
-pyglet.clock.schedule_interval(timer_callback, 1/250)
+pyglet.clock.schedule_interval(timer_callback, callback_interval)
 pyglet.app.run()
 
-dump_log()
+# dump_log()
