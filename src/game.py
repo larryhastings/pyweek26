@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
+import sys
+import time
+import datetime
+import itertools
+import random
 from enum import Enum
 from pathlib import Path
+
 from pyglet import gl
 import pyglet.image
 import pyglet.window.key as key
 import pyglet.window.key
 import pyglet.resource
-import sys
-import time
-import datetime
-import itertools
 
 
 tiles_x = 64
@@ -103,11 +105,23 @@ class MapTile:
 
 @legend(".")
 class MapWater(MapTile):
-    pass
+    current = (0, 0)
 
 @legend("^")
 class MapWaterCurrentUp(MapWater):
-    pass
+    current = (0, -1)
+
+@legend("<")
+class MapWaterCurrentLeft(MapWater):
+    current = (-1, 0)
+
+@legend(">")
+class MapWaterCurrentRight(MapWater):
+    current = (1, 0)
+
+@legend("v")
+class MapWaterCurrentDown(MapWater):
+    current = (0, 1)
 
 @legend("X")
 class MapBlockage(MapTile):
@@ -122,11 +136,11 @@ class MapSpawnPoint(MapTile):
     pass
 
 map_text = """
-......X.......................
-..#.##^.......................
-.##.##^.......................
-.#...#^.......................
-.##.##^.......................
+...v<<<.......................
+..#v##^.......................
+.##v##^.......................
+.#.>>>^.......................
+.##.##X.......................
 .##.##^.......................
 .S#.##^##.....................
 .##.####......................
@@ -321,24 +335,30 @@ class Level:
         0b1111: (1, 1),
     }
 
-    def __init__(self):
+    def __init__(self, width, height):
         self.start = time.time()
         self.map = {}
+        self.width = width
+        self.height = height
         player_position = None
-        for y in range(map_height):
-            for x in range(map_width):
-                coord = x, y
-                tile = map[coord]
-                if isinstance(tile, MapSpawnPoint):
-                    player_position = coord
-                    tile = MapLand()
-                self.map[coord] = tile
+        for coord in self.coords():
+            tile = map[coord]
+            if isinstance(tile, MapSpawnPoint):
+                player_position = coord
+                tile = MapLand()
+            self.map[coord] = tile
 
         if not player_position:
-            sys.exit("No player position set!")
+            raise Exception("No player position set!")
         self.player = Player(player_position)
 
         self.build_batch()
+
+    def coords(self):
+        """Iterate over coordinates in the level."""
+        for y in range(self.height):
+            for x in range(self.width):
+                yield x, y
 
     def build_batch(self):
         batch = pyglet.graphics.Batch()
@@ -346,27 +366,102 @@ class Level:
         def q(x, y):
             t = self.map.get((x, y))
             return isinstance(t, MapLand)
-        for y in range(map_height):
-            for x in range(map_width):
-                bitv = (
-                    q(x, y) |
-                    q(x, y - 1) << 1 |
-                    q(x + 1, y - 1) << 2 |
-                    q(x + 1, y) << 3
+        for x, y in self.coords():
+            bitv = (
+                q(x, y) |
+                q(x, y - 1) << 1 |
+                q(x + 1, y - 1) << 2 |
+                q(x + 1, y) << 3
+            )
+            screenx, screeny = map_to_screen((x, y))
+            tx, ty = self.tilemap[bitv]
+            sprites.append(
+                pyglet.sprite.Sprite(
+                    self.tiles[ty, tx],
+                    x=screenx,
+                    y=screeny,
+                    batch=batch,
                 )
-                screenx, screeny = map_to_screen((x, y))
-                tx, ty = self.tilemap[bitv]
-                sprites.append(
-                    pyglet.sprite.Sprite(
-                        self.tiles[ty, tx],
-                        x=screenx,
-                        y=screeny,
-                        batch=batch,
-                    )
-                )
+            )
         self.batch = batch
         self.sprites = sprites
 
+
+class FlowParticles:
+    ripple = pyglet.resource.image('ripple.png')
+    RATE = 10
+
+    def __init__(self, level):
+        self.level = level
+        self.batch = pyglet.graphics.Batch()
+        self.particles = []
+
+    def update(self, dt):
+        water_tiles = {}
+        for pos in self.level.coords():
+            t = self.level.map.get(pos)
+            if t is None:
+                water_tiles[pos] = (0, 0)
+            elif isinstance(t, MapWater):
+                water_tiles[pos] = t.current
+
+        new_particles = []
+        for p in self.particles:
+            p.age += dt
+            if p.age > 4:
+                continue
+
+            if p.age < 1:
+                p.opacity = p.age * p.bright
+            elif p.age > 3:
+                p.opacity = (4 - p.age) * p.bright
+
+            x, y = p.map_pos
+            current = water_tiles.get((round(x), round(y)))
+            if not current:
+                continue
+            curx, cury = current
+
+            vx, vy = p.v
+
+            frac = 0.5 ** dt
+            invfrac = 1.0 - frac
+            vx = frac * vx + invfrac * curx
+            vy = frac * vy + invfrac * cury
+
+            p.v = vx, vy
+            x += vx * dt * 0.3
+            y += vy * dt * 0.3
+            p.map_pos = x, y
+            p.position = map_to_screen(p.map_pos)
+            new_particles.append(p)
+
+        for (tx, ty), current in water_tiles.items():
+            if random.uniform(0, 3) > dt:
+                continue
+            x = random.uniform(tx - 0.5, tx + 0.5)
+            y = random.uniform(ty - 0.5, ty + 0.5)
+
+            map_pos = x, y
+            sx, sy = map_to_screen(map_pos)
+            p = pyglet.sprite.Sprite(
+                self.ripple,
+                sx,
+                sy,
+                batch=self.batch
+            )
+            p.age = 0
+            p.bright = random.uniform(128, 255)
+            cx, cy = current
+            p.v = (
+                cx + random.uniform(-0.5, 0.5),
+                cy + random.uniform(-0.5, 0.5)
+            )
+            p.opacity = 0
+            p.scale = random.uniform(0.2, 0.3)
+            p.map_pos = map_pos
+            new_particles.append(p)
+        self.particles = new_particles
 
 
 class PlayerOrientation(Enum):
@@ -494,7 +589,7 @@ def map_to_screen(pos):
     return x * tiles_x + 100, window.height - 100 - y * tiles_y
 
 game = Game()
-level = Level()
+level = Level(map_width, map_height)
 
 
 def screenshot_path():
@@ -536,18 +631,16 @@ pc_sprite = {
 
 grass = load_tile('grass.png')
 
+flow = FlowParticles(level)
+
 
 @window.event
 def on_draw():
     gl.glClearColor(0.5, 0.55, 0.8, 0)
     window.clear()
+
+    flow.batch.draw()
     level.batch.draw()
-#    for y in range(map_height):
-#        for x in range(map_width):
-#            coord = x, y
-#            t = level.map.get(coord)
-#            if isinstance(t, MapLand):
-#                grass.blit(*map_to_screen(coord))
 
     if not (level and level.player):
         return
@@ -562,6 +655,7 @@ def on_draw():
 
 def timer_callback(dt):
     game.timer(dt)
+    flow.update(dt)
 
 
 pyglet.clock.schedule_interval(timer_callback, callback_interval)
