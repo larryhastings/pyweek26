@@ -11,6 +11,12 @@ import datetime
 import itertools
 
 
+tiles_x = 64
+tiles_y = 40
+
+timed_bomb_interval = 3
+exploding_bomb_interval = 1/10
+
 logic_interval = 1/10
 
 typematic_interval = 1/4
@@ -27,6 +33,32 @@ pyglet.resource.path = [
 ]
 pyglet.resource.reindex()
 
+
+def load_sprite(name):
+    """Load a sprite and set the anchor position."""
+    pc = pyglet.resource.image(name)
+    pc.anchor_x = pc.width // 2
+    pc.anchor_y = pc.height // 2
+    return pyglet.sprite.Sprite(pc)
+
+
+def load_pc(name):
+    """Load a PC sprite and set the anchor position."""
+    pc = pyglet.resource.image(name)
+    pc.anchor_x = pc.width // 2
+    pc.anchor_y = 10
+    return pyglet.sprite.Sprite(pc)
+
+
+def load_tile(name):
+    """Load a ground tile and set the anchor position."""
+    img = pyglet.resource.image(name)
+    img.anchor_x = img.width // 2
+    img.anchor_y = img.height // 2
+    return img
+
+
+
 remapped_keys = {
     key.W: key.UP,
     key.A: key.LEFT,
@@ -38,6 +70,7 @@ remapped_keys = {
     key.RIGHT: key.RIGHT,
     key.ESCAPE: key.ESCAPE,
     key.ENTER: key.ENTER,
+    key.B: key.B,
     }
 interesting_key = remapped_keys.get
 
@@ -48,6 +81,8 @@ _key_repr = {
     key.RIGHT: "Right",
     key.ESCAPE: "Escape",
     key.ENTER: "Enter",
+
+    key.B: "B",
     }
 key_repr = _key_repr.get
 
@@ -265,16 +300,27 @@ class Game:
 class Level:
     def __init__(self):
         self.start = time.time()
-        self.player = Player()
         self.map = {}
+        player_position = None
         for y in range(map_height):
             for x in range(map_width):
                 coord = x, y
                 tile = map[coord]
                 if isinstance(tile, MapSpawnPoint):
-                    self.player.position = coord
+                    player_position = coord
                     tile = MapLand()
                 self.map[coord] = tile
+        if not player_position:
+            sys.exit("No player position set!")
+        self.player = Player(player_position)
+
+
+class PlayerOrientation(Enum):
+    INVALID = 0
+    RIGHT = 1
+    UP = 2
+    LEFT = 3
+    DOWN = 4
 
 
 key_to_movement_delta = {
@@ -284,14 +330,65 @@ key_to_movement_delta = {
     key.RIGHT: (+1,  0),
     }
 
+orientation_to_position_delta = {
+    PlayerOrientation.RIGHT: (+1,  0),
+    PlayerOrientation.UP:    ( 0, -1),
+    PlayerOrientation.LEFT:  (-1,  0),
+    PlayerOrientation.DOWN:  ( 0, +1),
+    }
+
+key_to_orientation = {
+    key.RIGHT: PlayerOrientation.RIGHT,
+    key.UP:    PlayerOrientation.UP,
+    key.LEFT:  PlayerOrientation.LEFT,
+    key.DOWN:  PlayerOrientation.DOWN,
+    }
+
+
 class Player:
-    def __init__(self):
+    def __init__(self, position):
         game.key_handler = self
+        self.position = position
+
+        # what should be the player's initial orientation?
+        # it doesn't really matter.  let's pick something cromulent.
+        #
+        # divide up the screen into three sections as such,
+        # and have the player face Down, Right, or Left as follows.
+        #
+        # +-----------+
+        # |     D     |
+        # |-----------|
+        # |  R  |  L  |
+        # +-----------+
+        x, y = position
+        if y <= (tiles_y // 2):
+            self.orientation = PlayerOrientation.DOWN
+        elif x <= (tiles_x // 2):
+            self.orientation = PlayerOrientation.RIGHT
+        else:
+            self.orientation = PlayerOrientation.LEFT
 
     def on_key(self, k):
+        if k == key.B:
+            # drop bomb
+            delta_x, delta_y = orientation_to_position_delta[level.player.orientation]
+            x, y = level.player.position
+            bomb_position = x + delta_x, y + delta_y
+            if bombs.get(bomb_position):
+                return
+            TimedBomb(bomb_position)
+            return
+
         delta = key_to_movement_delta.get(k)
         if not delta:
             return
+
+        desired_orientation = key_to_orientation[k]
+        if self.orientation != desired_orientation:
+            self.orientation = desired_orientation
+            return
+
         x, y = self.position
         delta_x, delta_y = delta
         new_position = x + delta_x, y + delta_y
@@ -304,6 +401,36 @@ class Player:
                 return
         self.position = new_position
 
+
+bombs = {}
+
+timed_bomb = load_sprite('timed-bomb.png')
+freeze_bomb = load_sprite('freeze-bomb.png')
+
+exploding_bomb_image = 'freeze-bomb.png'
+
+class Bomb:
+    def __init__(self, position):
+        self.position = position
+
+    def detonate(self, dt):
+        old_sprite_position = self.sprite.position
+        self.sprite.delete()
+        self.sprite = load_sprite(exploding_bomb_image)
+        self.sprite.position = old_sprite_position
+        pyglet.clock.schedule_once(self.remove, exploding_bomb_interval)
+
+    def remove(self, dt):
+        del bombs[self.position]
+        self.sprite.delete()
+
+class TimedBomb(Bomb):
+    def __init__(self, position):
+        super().__init__(position)
+        pyglet.clock.schedule_once(self.detonate, timed_bomb_interval)
+        bombs[self.position] = self
+        self.sprite = load_sprite('timed-bomb.png')
+        self.sprite.position = map_to_screen(position)
 
 
 window = pyglet.window.Window()
@@ -336,30 +463,23 @@ def on_key_release(k, modifiers):
     return game.on_key_release(k, modifiers)
 
 
-def load_pc(name):
-    """Load a PC sprite and set the anchor position."""
-    pc = pyglet.resource.image(name)
-    pc.anchor_x = pc.width // 2
-    pc.anchor_y = 10
-    return pc
+pc_down = load_pc('pc-down.png')
+pc_up = load_pc('pc-up.png')
+pc_left = load_pc('pc-left.png')
+pc_right = load_pc('pc-right.png')
 
+pc_sprite = {
+    PlayerOrientation.LEFT:  pc_left,
+    PlayerOrientation.RIGHT: pc_right,
+    PlayerOrientation.UP:    pc_up,
+    PlayerOrientation.DOWN:  pc_down,
+    }
 
-def load_tile(name):
-    """Load a ground tile and set the anchor position."""
-    img = pyglet.resource.image(name)
-    img.anchor_x = img.width // 2
-    img.anchor_y = img.height // 2
-    return img
-
-
-pc = load_pc('pc-s.png')
 grass = load_tile('grass.png')
-spr = pyglet.sprite.Sprite(pc)
-
 
 def map_to_screen(pos):
     x, y = pos
-    return x * 64 + 100, window.height - 100 - y * 40
+    return x * tiles_x + 100, window.height - 100 - y * tiles_y
 
 
 @window.event
@@ -373,8 +493,15 @@ def on_draw():
             if isinstance(t, MapLand):
                 grass.blit(*map_to_screen(coord))
 
+    if not (level and level.player):
+        return
+
+    spr = pc_sprite[level.player.orientation]
     spr.position = map_to_screen(level.player.position)
     spr.draw()
+
+    for bomb in bombs.values():
+        bomb.sprite.draw()
 
 
 def timer_callback(dt):
