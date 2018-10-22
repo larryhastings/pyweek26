@@ -29,6 +29,9 @@ typematic_delay = 1
 callback_interval = 1/20
 
 
+player_movement_logics = typematic_interval / logic_interval
+
+
 srcdir = Path(__file__).parent
 pyglet.resource.path = [
     'images',
@@ -174,42 +177,20 @@ class GameState(Enum):
     GAME_WON = 8
     CONFIRM_EXIT = 9
 
-class Timer:
-    def __init__(self, name, delay, callback):
-        self.name = name
-        self.delay = delay
-        self.callback = callback
-        self.reset()
-
-    def reset(self):
-        self.elapsed = 0
-
-    def advance(self, dt):
-        if self.elapsed < self.delay:
-            self.elapsed += dt
-            if self.elapsed >= self.delay:
-                self.elapsed = self.delay
-                self.callback()
-
-    @property
-    def ratio(self):
-        return self.elapsed / self.delay
-
-
 class Ticker:
-    def __init__(self, name, frequency, callback, *, delay=0):
+    def __init__(self, name, interval, callback=None, *, delay=0):
         """
-        frequency is a bad name, but this is how often to tick
-        expressed in seconds.  fractional seconds are allowed (as floats).
+        interval is how often to tick expressed in seconds.
+        fractional seconds are allowed (as floats).
 
         delay is how long to wait before the first tick, if not the
-        same as frequency.
+        same as interval.
 
         examples:
-        Ticker(frequency=0.25)
+        Ticker(interval=0.25)
           Ticks four times a second.
 
-        Ticker(frequency=0.5, delay=0.8)
+        Ticker(interval=0.5, delay=0.8)
           Ticks twice a second.  The first tick is at 0.8 seconds,
           the second at 1.3 seconds, the third at 1.8 seconds, etc.
 
@@ -220,9 +201,9 @@ class Ticker:
         are expressed in.  I called 'em seconds but they could just as
         easily be anything else (milliseconds, years, frames).
         """
-        assert isinstance(frequency, (int, float)) and frequency, "must supply a valid (nonzero) frequency!  got " + repr(frequency)
+        assert isinstance(interval, (int, float)) and interval, "must supply a valid (nonzero) interval!  got " + repr(interval)
         self.name = name
-        self.frequency = frequency
+        self.interval = interval
         self.callback = callback
         # initial delay
         self.delay = delay
@@ -234,17 +215,54 @@ class Ticker:
         self.elapsed += dt
         callbacks = 0
         while self.accumulator >= self.next:
-            self.callback()
             self.counter += 1
             callbacks += 1
             self.accumulator -= self.next
-            self.next = self.frequency
+            self.next = self.interval
+            if self.callback:
+                self.callback()
+            for t in self.timers:
+                t.advance(1)
         return callbacks
 
     def reset(self):
         self.counter = 0
         self.elapsed = self.accumulator = 0.0
-        self.next = self.delay or self.frequency
+        self.next = self.delay or self.interval
+        self.timers = []
+
+
+class Timer:
+    def __init__(self, name, clock, interval, callback=None):
+        self.name = name
+        self.clock = clock
+        self.interval = interval
+        self.callback = callback
+        self.reset()
+
+    def reset(self):
+        self.elapsed = 0
+        assert self not in self.clock.timers
+        self.clock.timers.append(self)
+
+    def advance(self, dt):
+        if self.elapsed >= self.interval:
+            return False
+        self.elapsed += dt
+        if self.elapsed < self.interval:
+            return False
+        self.elapsed = self.interval
+        if self.callback():
+            self.callback()
+        assert self in self.clock.timers
+        self.clock.timers.remove(self)
+        return True
+
+    @property
+    def ratio(self):
+        return self.elapsed / self.interval
+
+
 
 
 
@@ -307,6 +325,7 @@ class Game:
         pass
 
     def transition_to(self, new_state):
+        self.state = new_state
         _, _, name = str(new_state).rpartition(".")
         handler = getattr(self, "on_state_" + name, None)
         if handler:
@@ -413,6 +432,42 @@ class Level:
         self.sprites = sprites
 
 
+class Animator:
+    def __init__(self, clock):
+        """
+        clock should be a Ticker.
+        """
+        self.clock = clock
+
+    def animate(self, start, end, interval, callback=None):
+        self.start = start
+        self.end = end
+        self.interval = interval
+        self.callback = callback
+
+        self.timer = Timer("animator", self.clock, interval, self._complete)
+        self.finished = False
+
+        self.delta_x = end[0] - start[0]
+        self.delta_y = end[1] - start[1]
+
+    @property
+    def ratio(self):
+        return self.timer.ratio
+
+    def _complete(self):
+        self.finished = True
+        if self.callback:
+            self.callback()
+
+    @property
+    def position(self):
+        ratio = self.timer.ratio
+        x, y = self.start
+        x += self.delta_x * ratio
+        y += self.delta_y * ratio
+        return (x, y)
+
 
 class PlayerOrientation(Enum):
     INVALID = 0
@@ -444,10 +499,25 @@ key_to_orientation = {
     }
 
 
+pc_down = load_pc('pc-down.png')
+pc_up = load_pc('pc-up.png')
+pc_left = load_pc('pc-left.png')
+pc_right = load_pc('pc-right.png')
+
+pc_sprite = {
+    PlayerOrientation.LEFT:  pc_left,
+    PlayerOrientation.RIGHT: pc_right,
+    PlayerOrientation.UP:    pc_up,
+    PlayerOrientation.DOWN:  pc_down,
+    }
+
+
+
 class Player:
     def __init__(self, position):
         game.key_handler = self
         self.position = position
+        self.screen_position = map_to_screen(position)
 
         # what should be the player's initial orientation?
         # it doesn't really matter.  let's pick something cromulent.
@@ -468,6 +538,15 @@ class Player:
         else:
             self.orientation = PlayerOrientation.LEFT
 
+        self.animator = Animator(game.logics)
+        self.halfway_timer = None
+        self.moving = False
+
+    def _finished_animation(self):
+        self.moving = False
+        self.position = self.new_position
+        self.screen_position = self.animator.position
+
     def on_key(self, k):
         if k == key.B:
             # drop bomb
@@ -481,6 +560,14 @@ class Player:
 
         delta = key_to_movement_delta.get(k)
         if not delta:
+            return
+
+        # for now: once they're moving, they
+        # have to finish moving.
+        # don't let them change direction
+        # or abort the movement, for now.
+        # they have to finish it.
+        if self.moving:
             return
 
         desired_orientation = key_to_orientation[k]
@@ -498,7 +585,24 @@ class Player:
             tile = map.get(new_position)
             if (not tile) or isinstance(tile, MapWater):
                 return
-        self.position = new_position
+
+        self.moving = True
+        self.new_position = new_position
+        self.animator.animate(
+            map_to_screen(self.position),
+            map_to_screen(new_position),
+            player_movement_logics,
+            self._finished_animation)
+
+    def render(self):
+        spr = pc_sprite[level.player.orientation]
+        if self.moving:
+            position = self.animator.position
+        else:
+            position = self.screen_position
+        # print("drawing player at", position)
+        spr.position = position
+        spr.draw()
 
 
 bombs = {}
@@ -567,18 +671,6 @@ def on_key_release(k, modifiers):
     return game.on_key_release(k, modifiers)
 
 
-pc_down = load_pc('pc-down.png')
-pc_up = load_pc('pc-up.png')
-pc_left = load_pc('pc-left.png')
-pc_right = load_pc('pc-right.png')
-
-pc_sprite = {
-    PlayerOrientation.LEFT:  pc_left,
-    PlayerOrientation.RIGHT: pc_right,
-    PlayerOrientation.UP:    pc_up,
-    PlayerOrientation.DOWN:  pc_down,
-    }
-
 grass = load_tile('grass.png')
 
 
@@ -597,9 +689,7 @@ def on_draw():
     if not (level and level.player):
         return
 
-    spr = pc_sprite[level.player.orientation]
-    spr.position = map_to_screen(level.player.position)
-    spr.draw()
+    level.player.render()
 
     for bomb in bombs.values():
         bomb.sprite.draw()
