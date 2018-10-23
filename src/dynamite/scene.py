@@ -61,8 +61,14 @@ class ImageSequence:
 
         images = list(grid)
         for img in images:
-            img.anchor_x = self.anchor_x
-            img.anchor_y = self.anchor_y
+            if self.anchor_x == 'center':
+                img.anchor_x = img.width // 2
+            else:
+                img.anchor_x = self.anchor_x
+            if self.anchor_y == 'center':
+                img.anchor_y = img.height // 2
+            else:
+                img.anchor_y = self.anchor_y
 
         return pyglet.image.Animation.from_image_sequence(
             images,
@@ -94,6 +100,7 @@ class Actor:
             group=pyglet.graphics.OrderedGroup(-y),
             batch=scene.batch,
         )
+        self.anim = sprite_name
 
         self._pos = position
         self.scene = scene
@@ -101,6 +108,7 @@ class Actor:
 
     def play(self, name):
         self.sprite.image = self.sprites[name]
+        self.anim = name
 
     @property
     def position(self):
@@ -116,6 +124,7 @@ class Actor:
     def delete(self):
         self.scene.objects.remove(self)
         self.sprite.delete()
+        self.scene = None
 
 
 class Player(Actor):
@@ -133,11 +142,47 @@ class Player(Actor):
 class Bomb(Actor):
     SPRITES = [
         'timed-bomb',
+        'timed-bomb-red',
         'freeze-bomb',
         'contact-bomb',
-        'bomb-float-1',
-        'bomb-float-2',
+        ImageSequence(
+            'timed-bomb-float',
+            frames=2,
+            delay=1.1,
+            anchor_x='center',
+            anchor_y=14,
+            loop=True,
+        ),
+        ImageSequence(
+            'timed-bomb-float-red',
+            frames=2,
+            delay=1.1,
+            anchor_x='center',
+            anchor_y=14,
+            loop=True,
+        )
     ]
+    red = False
+
+    def toggle_red(self):
+        """Flip the bomb sprite to/from red."""
+        if self.red:
+            img = self.sprites[self.anim]
+        else:
+            img = self.sprites[f'{self.anim}-red']
+
+        # There is no method to replace an animation in a sprite, keeping
+        # the current frame, so do this using the internals of the Sprite
+        # class - see
+        # https://bitbucket.org/pyglet/pyglet/src/de3608deb882c0719f231880ecb07f7d4bb58cb6/pyglet/sprite.py#lines-356
+        if isinstance(img, pyglet.image.Animation):
+            self.sprite._animation = img
+            frame = self.sprite._frame_index
+            self.sprite._set_texture(img.frames[frame].image.get_texture())
+        else:
+            self.sprite.image = img
+
+        self.red = not self.red
 
 
 class Explosion(Actor):

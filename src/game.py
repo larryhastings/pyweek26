@@ -19,7 +19,7 @@ from dynamite.particles import FlowParticles
 from dynamite.level_renderer import LevelRenderer
 from dynamite.scene import Scene
 
-timed_bomb_interval = 3
+timed_bomb_interval = 5
 exploding_bomb_interval = 1/10
 
 logic_interval = 1/120
@@ -727,9 +727,21 @@ class TimedBomb(Bomb):
     def __init__(self, position):
         super().__init__(position)
         if level.get(position).water:
-            self.actor.play('bomb-float-1')
+            self.actor.play('timed-bomb-float')
+        pyglet.clock.schedule_once(self.toggle_red, timed_bomb_interval * 0.5)
         pyglet.clock.schedule_once(self.detonate, timed_bomb_interval)
+        self.t = 0
         bombs[self.position] = self
+
+    def toggle_red(self, dt):
+        self.t += dt
+        if self.actor.scene:
+            self.actor.toggle_red()
+            if self.t < timed_bomb_interval - 1.0:
+                next = 0.4
+            else:
+                next = 0.1
+            pyglet.clock.schedule_once(self.toggle_red, next)
 
 
 class Scenery:
