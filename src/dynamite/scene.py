@@ -14,6 +14,7 @@ class Scene:
         Tree.load()
         Bomb.load()
         Player.load()
+        Explosion.load()
 
     def draw(self):
         self.batch.invalidate()
@@ -28,6 +29,46 @@ class Scene:
     def spawn_player(self, position, sprite='pc-up'):
         return Player(self, position, sprite)
 
+    def spawn_explosion(self, position):
+        Explosion(self, position)
+
+
+
+# Indicate an animation
+class ImageSequence:
+    def __init__(
+            self,
+            name,
+            frames,
+            delay=0.1,
+            anchor_x=0,
+            anchor_y=0,
+            loop=False):
+        self.name = name
+        self.frames = frames
+        self.delay = delay
+        self.loop = loop
+        self.anchor_x = anchor_x
+        self.anchor_y = anchor_y
+
+    def load(self):
+        img = pyglet.resource.image(f'{self.name}.png')
+        grid = pyglet.image.ImageGrid(
+            img,
+            rows=1,
+            columns=self.frames
+        )
+
+        images = list(grid)
+        for img in images:
+            img.anchor_x = self.anchor_x
+            img.anchor_y = self.anchor_y
+
+        return pyglet.image.Animation.from_image_sequence(
+            images,
+            self.delay,
+            loop=self.loop
+        )
 
 
 class Actor:
@@ -37,9 +78,12 @@ class Actor:
             return
         cls.sprites = {}
         for spr in cls.SPRITES:
-            s = cls.sprites[spr] = pyglet.resource.image(f'{spr}.png')
-            s.anchor_x = s.width // 2
-            s.anchor_y = 10
+            if isinstance(spr, ImageSequence):
+                s = cls.sprites[spr.name] = spr.load()
+            else:
+                s = cls.sprites[spr] = pyglet.resource.image(f'{spr}.png')
+                s.anchor_x = s.width // 2
+                s.anchor_y = 10
 
     def __init__(self, scene, position, sprite_name='default'):
         """Do not use this constructor - use methods of Scene."""
@@ -94,6 +138,22 @@ class Bomb(Actor):
         'bomb-float-1',
         'bomb-float-2',
     ]
+
+
+class Explosion(Actor):
+    SPRITES = [
+        ImageSequence(
+            'explosion',
+            frames=9,
+            delay=0.02,
+            anchor_x=53,
+            anchor_y=39,
+        ),
+    ]
+    def __init__(self, scene, position):
+        super().__init__(scene, position, 'explosion')
+        self.sprite.on_animation_end = self.delete
+        self.sprite.scale = 2.0
 
 
 class Tree(Actor):

@@ -715,12 +715,12 @@ class Bomb:
         self.actor = scene.spawn_bomb(self.position)
 
     def detonate(self, dt):
-        self.actor.play('freeze-bomb')
+        self.actor.scene.spawn_explosion(self.actor.position)
+        self.actor.delete()
         pyglet.clock.schedule_once(self.remove, exploding_bomb_interval)
 
     def remove(self, dt):
         del bombs[self.position]
-        self.actor.delete()
 
 
 class TimedBomb(Bomb):
