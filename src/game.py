@@ -741,7 +741,20 @@ class Scenery:
         self.actor.delete()
 
 
-window = pyglet.window.Window(coords.WIDTH, coords.HEIGHT)
+
+# We have to start with the window invisible in order to be able to set
+# the icon, under some WMs
+window = pyglet.window.Window(
+    coords.WIDTH,
+    coords.HEIGHT,
+    caption="Dynamite Valley",
+    visible=False,
+)
+window.set_icon(
+    *(pyglet.resource.image(f'icons/dv-{sz}.png') for sz in (128, 64, 32))
+)
+window.set_visible(True)
+
 
 game = Game()
 scene = Scene()
