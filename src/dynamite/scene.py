@@ -118,6 +118,8 @@ class Actor:
     def position(self, v):
         x, y = map_to_screen(v)
         self._pos = v
+        if not self.scene:
+            return
         self.sprite.position = x, y
         self.sprite.group = pyglet.graphics.OrderedGroup(-y)
 

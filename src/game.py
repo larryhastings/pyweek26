@@ -19,21 +19,25 @@ from dynamite.particles import FlowParticles
 from dynamite.level_renderer import LevelRenderer
 from dynamite.scene import Scene
 
-timed_bomb_interval = 5
-exploding_bomb_interval = 1/10
 
-logic_interval = 1/120
+# please ensure all the other intervals
+# are evenly divisible into this interval
+logics_per_second = 120
+logic_interval = 1/logics_per_second
 
 typematic_interval = 1/4
 typematic_delay = 1
 
-# please ensure all the other intervals
-# are evenly divisible into this interval
+timed_bomb_interval = 5 * logics_per_second
+exploding_bomb_interval = (1/10) * logics_per_second
+
 callback_interval = 1/20
 
 
-player_movement_logics = typematic_interval / logic_interval
-player_movement_delay_logics = typematic_interval / logic_interval
+player_movement_logics = typematic_interval * logics_per_second
+player_movement_delay_logics = typematic_interval * logics_per_second
+
+water_speed_logics = 1 * logics_per_second
 
 srcdir = Path(__file__).parent
 pyglet.resource.path = [
@@ -108,20 +112,24 @@ class MapWater(MapTile):
     current = (0, 0)
     water = True
 
+# ABC
+class MapMovingWater(MapWater):
+    pass
+
 @legend("^")
-class MapWaterCurrentUp(MapWater):
+class MapWaterCurrentUp(MapMovingWater):
     current = (0, -1)
 
 @legend("<")
-class MapWaterCurrentLeft(MapWater):
+class MapWaterCurrentLeft(MapMovingWater):
     current = (-1, 0)
 
 @legend(">")
-class MapWaterCurrentRight(MapWater):
+class MapWaterCurrentRight(MapMovingWater):
     current = (1, 0)
 
 @legend("v")
-class MapWaterCurrentDown(MapWater):
+class MapWaterCurrentDown(MapMovingWater):
     current = (0, 1)
 
 @legend("X")
@@ -446,12 +454,7 @@ class Animator:
         self.timer = self.halfway_timer = None
 
     def animate(self, obj, property, end, interval, callback=None, halfway_callback=None):
-        if self.halfway_timer:
-            self.halfway_timer.cancel()
-            self.halfway_timer = None
-        if self.timer:
-            self.timer.cancel()
-            self.timer = None
+        self.cancel()
 
         self.obj = obj
         self.property = property
@@ -471,12 +474,22 @@ class Animator:
         self.delta_x = end[0] - start[0]
         self.delta_y = end[1] - start[1]
 
+    def cancel(self):
+        if self.halfway_timer:
+            self.halfway_timer.cancel()
+            self.halfway_timer = None
+        if self.timer:
+            self.timer.cancel()
+            self.timer = None
+        self.obj = self.property = None
+
     @property
     def ratio(self):
         return self.timer.ratio
 
 
     def _halfway(self):
+        self.halfway_timer = None
         self.halfway_callback()
 
     def _on_tick(self):
@@ -572,7 +585,7 @@ class Player:
         self.halfway_timer = None
         self.moving = PlayerAnimationState.STATIONARY
         self.start_moving_timer = None
-        self.queued_key = None
+        self.queued_key = self.held_key = None
 
     def _animation_halfway(self):
         self.moving = PlayerAnimationState.MOVING_COMMITTED
@@ -616,6 +629,7 @@ class Player:
         log(f"on key {key_repr(k)}")
         if k == key.B:
             if self.moving != PlayerAnimationState.STATIONARY:
+                log("can't drop, player is moving")
                 return
             # drop bomb
             delta_x, delta_y = orientation_to_position_delta[level.player.orientation]
@@ -712,15 +726,49 @@ bombs = {}
 class Bomb:
     def __init__(self, position):
         self.position = position
+        bombs[self.position] = self
         self.actor = scene.spawn_bomb(self.position)
+        self.animator = None
+        self.animate_if_on_moving_water()
 
-    def detonate(self, dt):
+    def animate_if_on_moving_water(self):
+        tile = map[self.position]
+        log("bomb placed at", self.position, "tile is", repr(tile))
+        if isinstance(tile, MapMovingWater):
+            log("animating bomb movement")
+            self.animator = Animator(game.logics)
+            x, y = self.position
+            dx, dy = tile.current
+            self.new_position = x + dx, y + dy
+            # new_screen_position = map_to_screen(self.new_position)
+            self.animator.animate(
+                self.actor, 'position',
+                self.new_position,
+                water_speed_logics,
+                self._animation_finished,
+                self._animation_halfway)
+
+    def _animation_halfway(self):
+        log("bomb halfway")
+        del bombs[self.position]
+        self.position = self.new_position
+        bombs[self.position] = self
+
+    def _animation_finished(self):
+        log("bomb finished moving")
+        self.animate_if_on_moving_water()
+
+    def detonate(self):
+        if self.animator:
+            self.animator.cancel()
+        self.remove()
         self.actor.scene.spawn_explosion(self.actor.position)
         self.actor.delete()
-        pyglet.clock.schedule_once(self.remove, exploding_bomb_interval)
+        Timer("bomb detonation", game.logics, exploding_bomb_interval, self.remove)
 
-    def remove(self, dt):
-        del bombs[self.position]
+    def remove(self):
+        if self.position in bombs:
+            del bombs[self.position]
 
 
 class TimedBomb(Bomb):
@@ -728,20 +776,21 @@ class TimedBomb(Bomb):
         super().__init__(position)
         if level.get(position).water:
             self.actor.play('timed-bomb-float')
-        pyglet.clock.schedule_once(self.toggle_red, timed_bomb_interval * 0.5)
-        pyglet.clock.schedule_once(self.detonate, timed_bomb_interval)
-        self.t = 0
-        bombs[self.position] = self
+        # TODO convert these to our own timers
+        # otherwise they'll still fire when we pause the game
+        Timer("bomb toggle red", game.logics, timed_bomb_interval * 0.5, self.toggle_red)
+        Timer("bomb detonate", game.logics, timed_bomb_interval, self.detonate)
+        self.start_time = game.logics.counter
 
-    def toggle_red(self, dt):
-        self.t += dt
+    def toggle_red(self):
+        elapsed = game.logics.counter - self.start_time
         if self.actor.scene:
             self.actor.toggle_red()
-            if self.t < timed_bomb_interval - 1.0:
-                next = 0.4
+            if elapsed < (timed_bomb_interval - logics_per_second):
+                next = 0.4 * logics_per_second
             else:
-                next = 0.1
-            pyglet.clock.schedule_once(self.toggle_red, next)
+                next = 0.1 * logics_per_second
+            Timer("bomb toggle red again", game.logics, next, self.toggle_red)
 
 
 class Scenery:
