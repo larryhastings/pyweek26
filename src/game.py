@@ -259,6 +259,10 @@ class Timer:
         assert self not in self.clock.timers
         self.clock.timers.append(self)
 
+    def cancel(self):
+        if self in self.clock.timers:
+            self.clock.timers.remove(self)
+
     def advance(self, dt):
         if self.elapsed >= self.interval:
             return False
@@ -269,14 +273,12 @@ class Timer:
         if self.callback():
             self.callback()
         assert self in self.clock.timers
-        self.clock.timers.remove(self)
+        self.cancel()
         return True
 
     @property
     def ratio(self):
         return self.elapsed / self.interval
-
-
 
 
 
@@ -292,6 +294,13 @@ def dump_log():
     for t, s in _log:
         t -= log_start
         print(f"[{t:8.4f}] {s}")
+
+
+def send_message(o, message, *a):
+    fn = getattr(o, message, None)
+    if not fn:
+        return None
+    return fn(*a)
 
 class Game:
     def __init__(self):
@@ -361,19 +370,22 @@ class Game:
             if repeater:
                 repeater.reset()
                 self.repeater = repeater
-            return self.key_handler.on_key(k)
+            r1 = send_message(self.key_handler, "on_key_press", k)
+            r2 = send_message(self.key_handler, "on_key", k)
+            return r1 or r2
 
     def on_key_release(self, k, modifier):
         k = interesting_key(k)
         if k:
             if self.repeater and self.repeater.key == k:
                 self.repeater = None
+            return send_message(self.key_handler, "on_key_release", k)
 
     def on_key(self, k):
         k = interesting_key(k)
         assert k
         if k:
-            return self.key_handler.on_key(k)
+            return send_message(self.key_handler, "on_key", k)
 
 
 class Level:
@@ -535,8 +547,16 @@ class Animator:
         clock should be a Ticker.
         """
         self.clock = clock
+        self.timer = self.halfway_timer = None
 
     def animate(self, start, end, interval, callback=None, halfway_callback=None):
+        if self.halfway_timer:
+            self.halfway_timer.cancel()
+            self.halfway_timer = None
+        if self.timer:
+            self.timer.cancel()
+            self.timer = None
+
         self.start = start
         self.end = end
         self.interval = interval
@@ -578,6 +598,12 @@ class PlayerOrientation(Enum):
     UP = 2
     LEFT = 3
     DOWN = 4
+
+class PlayerAnimationState(Enum):
+    INVALID = 0
+    STATIONARY = 1
+    MOVING_ABORTABLE = 2
+    MOVING_COMMITTED = 3
 
 
 key_to_movement_delta = {
@@ -643,17 +669,35 @@ class Player:
 
         self.animator = Animator(game.logics)
         self.halfway_timer = None
-        self.moving = False
+        self.moving = PlayerAnimationState.STATIONARY
+        self.queued_key = None
 
     def _animation_halfway(self):
+        self.moving = PlayerAnimationState.MOVING_COMMITTED
         self.position = self.new_position
+        # print(f"{game.logics.counter:5} halfway, committing, now internally at {self.position}")
 
     def _animation_finished(self):
-        self.moving = False
+        self.moving = PlayerAnimationState.STATIONARY
         self.screen_position = self.animator.position
+        # print(f"{game.logics.counter:5} finished animating")
+        if self.queued_key:
+            k = self.queued_key
+            self.queued_key = None
+            self.on_key(k)
+
+    def on_key_press(self, k):
+        if key_to_movement_delta.get(k):
+            self.held_key = k
+
+    def on_key_release(self, k):
+        if k == self.held_key:
+            self.held_key = None
 
     def on_key(self, k):
         if k == key.B:
+            if self.moving != PlayerAnimationState.STATIONARY:
+                return
             # drop bomb
             delta_x, delta_y = orientation_to_position_delta[level.player.orientation]
             x, y = level.player.position
@@ -667,15 +711,22 @@ class Player:
         if not delta:
             return
 
-        # for now: once they're moving, they
-        # have to finish moving.
-        # don't let them change direction
-        # or abort the movement, for now.
-        # they have to finish it.
-        if self.moving:
+        desired_orientation = key_to_orientation[k]
+
+        if self.moving == PlayerAnimationState.MOVING_COMMITTED:
+            if self.orientation == desired_orientation:
+                return
+            self.queued_key = k
             return
 
-        desired_orientation = key_to_orientation[k]
+        if self.moving == PlayerAnimationState.MOVING_ABORTABLE:
+            if self.orientation == desired_orientation:
+                # ignore
+                return
+            self.queued_key = k
+            self.abort_movement()
+            return
+
         if self.orientation != desired_orientation:
             self.orientation = desired_orientation
             return
@@ -691,7 +742,7 @@ class Player:
             if (not tile) or isinstance(tile, MapWater):
                 return
 
-        self.moving = True
+        self.moving = PlayerAnimationState.MOVING_ABORTABLE
         self.new_position = new_position
         self.animator.animate(
             map_to_screen(self.position),
@@ -699,10 +750,24 @@ class Player:
             player_movement_logics,
             self._animation_finished,
             self._animation_halfway)
+        # print(f"{game.logics.counter:5} starting animation of player from {self.position} to {new_position}")
+
+    def abort_movement(self):
+        if self.moving != PlayerAnimationState.MOVING_ABORTABLE:
+            return
+        self.moving = PlayerAnimationState.MOVING_COMMITTED
+        starting_position = self.animator.position
+        ending_position = self.animator.start
+        self.animator.animate(
+            starting_position,
+            ending_position,
+            player_movement_logics / 3,
+            self._animation_finished)
+
 
     def render(self):
         spr = pc_sprite[level.player.orientation]
-        if self.moving:
+        if self.moving != PlayerAnimationState.STATIONARY:
             position = self.animator.position
         else:
             position = self.screen_position
