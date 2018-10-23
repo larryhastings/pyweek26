@@ -196,7 +196,15 @@ class GameState(Enum):
     GAME_WON = 8
     CONFIRM_EXIT = 9
 
-class Ticker:
+class Clock:
+    """
+    A discrete clock based on an external time source.
+    Used, for example, as the "game logic" clock--you feed
+    in time, and it tells you when it's time to calculate
+    the next logical positions.
+
+    (Want to pause?  Just temporarily stop feeding in time.)
+    """
     def __init__(self, name, interval, callback=None, *, delay=0):
         """
         interval is how often to tick expressed in seconds.
@@ -206,17 +214,17 @@ class Ticker:
         same as interval.
 
         examples:
-        Ticker(interval=0.25)
+        Clock(interval=0.25)
           Ticks four times a second.
 
-        Ticker(interval=0.5, delay=0.8)
+        Clock(interval=0.5, delay=0.8)
           Ticks twice a second.  The first tick is at 0.8 seconds,
           the second at 1.3 seconds, the third at 1.8 seconds, etc.
 
-        Tickers are not automatic.  You must explicitly call advance()
+        Clocks are not automatic.  You must explicitly call advance()
         to tell them that time has elapsed.
 
-        Note that Ticker doesn't actually care what units the times
+        Note that Clock doesn't actually care what units the times
         are expressed in.  I called 'em seconds but they could just as
         easily be anything else (milliseconds, years, frames).
         """
@@ -293,22 +301,20 @@ class Timer:
         return self.elapsed / self.interval
 
 
+log_start_time = time.time()
 
-_log = []
-log_start = time.time()
 def log(*a):
-    t = time.time()
+    elapsed = time.time() - log_start_time
     s = " ".join(str(x) for x in a)
-    _log.append((t, s))
+    print(f"[{elapsed:07.3f}:{game.logics.counter:5}]", s)
 
-def dump_log():
-    print()
-    for t, s in _log:
-        t -= log_start
-        print(f"[{t:8.4f}] {s}")
 
 
 def send_message(o, message, *a):
+    """
+    Safely calls a method on an object.
+    If the object doesn't have that method, returns None.
+    """
     fn = getattr(o, message, None)
     if not fn:
         return None
@@ -323,11 +329,11 @@ class Game:
         self.old_state = self.state = GameState.INVALID
         self.transition_to(GameState.PLAYING)
 
-        # self.renders = Ticker("render", 1/4, self.render)
+        # self.renders = Clock("render", 1/4, self.render)
         self.last_render = -1000
         self.renders = 0
 
-        self.logics = Ticker("logic", logic_interval, self.logic)
+        self.logics = Clock("logic", logic_interval, self.logic)
 
         self.key_handler = self
 
@@ -344,7 +350,7 @@ class Game:
             key.RIGHT,
             ):
             rk = make_repeater(k)
-            repeater = Ticker(key_repr(k) + " repeater", typematic_interval, rk, delay=typematic_delay)
+            repeater = Clock(key_repr(k) + " repeater", typematic_interval, rk, delay=typematic_delay)
             repeater.key = k
             self.repeaters[k] = repeater
 
@@ -362,9 +368,7 @@ class Game:
     def transition_to(self, new_state):
         self.state = new_state
         _, _, name = str(new_state).rpartition(".")
-        handler = getattr(self, "on_state_" + name, None)
-        if handler:
-            handler()
+        send_message(self, "on_state_" + name)
 
     def render(self):
         self.renders += 1
@@ -436,7 +440,7 @@ class Level:
 class Animator:
     def __init__(self, clock):
         """
-        clock should be a Ticker.
+        clock should be a Clock.
         """
         self.clock = clock
         self.timer = self.halfway_timer = None
@@ -575,12 +579,12 @@ class Player:
         self.position = self.new_position
 
     def _animation_finished(self):
+        log("finished animating")
         self.moving = PlayerAnimationState.STATIONARY
         self.screen_position = self.animator.position
-        # print(f"{game.logics.counter:5} finished animating")
         if self.queued_key:
             if self.held_key:
-                assert self.held_key == self.queued_key
+                assert self.held_key == self.queued_key, f"{key_repr(self.held_key)} != {key_repr(self.queued_key)} !!!"
             k = self.queued_key
             self.queued_key = None
             self.on_key(k)
@@ -589,26 +593,27 @@ class Player:
 
     def cancel_start_moving(self):
         if self.start_moving_timer:
-            # print(f"[{game.logics.counter:05} canceling start_moving_timer")
+            log("canceling start_moving_timer")
             self.start_moving_timer.cancel()
             self.start_moving_timer = None
-        # else:
-        #     print(f"[{game.logics.counter:05} no start_moving_timer to cancel")
+        else:
+            log("no start_moving_timer to cancel")
 
     def on_key_press(self, k):
         if key_to_movement_delta.get(k):
-            # print(f"[{game.logics.counter:05} key press {key_repr(k)}")
+            log(f"key press {key_repr(k)}")
             self.cancel_start_moving()
             self.held_key = k
             self.start_moving_timer = Timer("start moving " + key_repr(k), game.logics, player_movement_delay_logics, self._start_moving)
 
     def on_key_release(self, k):
         if k == self.held_key:
-            # print(f"[{game.logics.counter:05} key release {key_repr(k)}")
+            log(f"key release {key_repr(k)}")
             self.cancel_start_moving()
             self.held_key = None
 
     def on_key(self, k):
+        log(f"on key {key_repr(k)}")
         if k == key.B:
             if self.moving != PlayerAnimationState.STATIONARY:
                 return
