@@ -16,6 +16,8 @@ import pyglet.resource
 from dynamite import coords
 from dynamite.coords import map_to_screen
 from dynamite.particles import FlowParticles
+from dynamite.level_renderer import LevelRenderer
+from dynamite.scene import Scene
 
 timed_bomb_interval = 3
 exploding_bomb_interval = 1/10
@@ -39,7 +41,7 @@ pyglet.resource.path = [
 ]
 pyglet.resource.reindex()
 
-
+LevelRenderer.load()
 FlowParticles.load()
 
 def load_sprite(name):
@@ -56,14 +58,6 @@ def load_pc(name):
     pc.anchor_x = pc.width // 2
     pc.anchor_y = 10
     return pyglet.sprite.Sprite(pc)
-
-
-def load_tile(name):
-    """Load a ground tile and set the anchor position."""
-    img = pyglet.resource.image(name)
-    img.anchor_x = img.width // 2
-    img.anchor_y = img.height // 2
-    return img
 
 
 
@@ -107,6 +101,7 @@ def legend(c):
 
 class MapTile:
     water = False
+    spawn_item = None
 
 @legend(".")
 class MapWater(MapTile):
@@ -139,8 +134,15 @@ class MapLand(MapTile):
     pass
 
 @legend("S")
-class MapSpawnPoint(MapTile):
-    pass
+class MapSpawnPoint(MapLand):
+    def spawn_item(self, pos):
+        return Player(pos)
+
+@legend("T")
+class MapTree(MapTile):
+    def spawn_item(self, pos):
+        return Scenery(pos, 'fir-tree')
+
 
 map_text = """
 ...v<<<.......................
@@ -150,7 +152,7 @@ map_text = """
 .##.##X.......................
 .##.##^.......................
 .S#.##^##.....................
-.##.####......................
+.##.T###......................
 ..............................
 """
 # .S#.##^.......................
@@ -250,11 +252,12 @@ class Ticker:
 
 
 class Timer:
-    def __init__(self, name, clock, interval, callback=None):
+    def __init__(self, name, clock, interval, end_callback=None, on_tick=None):
         self.name = name
         self.clock = clock
         self.interval = interval
-        self.callback = callback
+        self.callback = end_callback
+        self.on_tick = on_tick
         self.reset()
 
     def reset(self):
@@ -266,6 +269,8 @@ class Timer:
         if self.elapsed >= self.interval:
             return False
         self.elapsed += dt
+        if self.on_tick:
+            self.on_tick()
         if self.elapsed < self.interval:
             return False
         self.elapsed = self.interval
@@ -295,6 +300,7 @@ def dump_log():
     for t, s in _log:
         t -= log_start
         print(f"[{t:8.4f}] {s}")
+
 
 class Game:
     def __init__(self):
@@ -380,81 +386,36 @@ class Game:
 
 
 class Level:
-    tiles = pyglet.image.ImageGrid(
-        pyglet.resource.image('tilemap.png'),
-        rows=8,
-        columns=5,
-    ).get_texture_sequence()
-    tilemap = {
-        0b0000: (0, 3),
-        0b0001: (2, 2),
-        0b0010: (2, 0),
-        0b0011: (2, 1),
-        0b0100: (0, 0),
-        0b0110: (1, 0),
-        0b0111: (3, 1),
-        0b1000: (0, 2),
-        0b1001: (1, 2),
-        0b1011: (3, 0),
-        0b1100: (0, 1),
-        0b1101: (4, 0),
-        0b1110: (4, 1),
-        0b1111: (1, 1),
-    }
+    DEFAULT = MapWater()
 
-    def __init__(self, width, height):
+    def __init__(self, scene, width, height):
         self.start = time.time()
         self.map = {}
         self.width = width
         self.height = height
-        player_position = None
+
+        player = None
         for coord in self.coords():
             tile = map[coord]
-            if isinstance(tile, MapSpawnPoint):
-                player_position = coord
+            if tile.spawn_item:
+                obj = tile.spawn_item(coord)
+                if isinstance(obj, Player):
+                    player = obj
                 tile = MapLand()
             self.map[coord] = tile
 
-        if not player_position:
+        if not player:
             raise Exception("No player position set!")
-        self.player = Player(player_position)
+        self.player = player
 
-        self.build_batch()
+    def get(self, pos):
+        return self.map.get(pos) or self.DEFAULT
 
     def coords(self):
         """Iterate over coordinates in the level."""
         for y in range(self.height):
             for x in range(self.width):
                 yield x, y
-
-    def build_batch(self):
-        batch = pyglet.graphics.Batch()
-        sprites = []
-        def q(x, y):
-            t = self.map.get((x, y))
-            return bool(t and not t.water)
-        for x, y in self.coords():
-            bitv = (
-                q(x, y) |
-                q(x, y - 1) << 1 |
-                q(x + 1, y - 1) << 2 |
-                q(x + 1, y) << 3
-            )
-            screenx, screeny = map_to_screen((x, y))
-            tx, ty = self.tilemap[bitv]
-            sprites.append(
-                pyglet.sprite.Sprite(
-                    self.tiles[ty, tx],
-                    x=screenx,
-                    y=screeny,
-                    batch=batch,
-                )
-            )
-        self.batch = batch
-        self.sprites = sprites
-
-
-
 
 
 class Animator:
@@ -464,13 +425,15 @@ class Animator:
         """
         self.clock = clock
 
-    def animate(self, start, end, interval, callback=None):
-        self.start = start
+    def animate(self, obj, property, end, interval, callback=None):
+        self.obj = obj
+        self.property = property
+        start = self.start = getattr(obj, property)
         self.end = end
         self.interval = interval
         self.callback = callback
 
-        self.timer = Timer("animator", self.clock, interval, self._complete)
+        self.timer = Timer("animator", self.clock, interval, self._complete, on_tick=self._on_tick)
         self.finished = False
 
         self.delta_x = end[0] - start[0]
@@ -479,6 +442,9 @@ class Animator:
     @property
     def ratio(self):
         return self.timer.ratio
+
+    def _on_tick(self):
+        setattr(self.obj, self.property, self.position)
 
     def _complete(self):
         self.finished = True
@@ -495,11 +461,13 @@ class Animator:
 
 
 class PlayerOrientation(Enum):
-    INVALID = 0
-    RIGHT = 1
-    UP = 2
-    LEFT = 3
-    DOWN = 4
+    RIGHT = 0
+    UP = 1
+    LEFT = 2
+    DOWN = 3
+
+    def get_sprite(self):
+        return ('right', 'up', 'left', 'down')[self.value]
 
 
 key_to_movement_delta = {
@@ -524,25 +492,12 @@ key_to_orientation = {
     }
 
 
-pc_down = load_pc('pc-down.png')
-pc_up = load_pc('pc-up.png')
-pc_left = load_pc('pc-left.png')
-pc_right = load_pc('pc-right.png')
-
-pc_sprite = {
-    PlayerOrientation.LEFT:  pc_left,
-    PlayerOrientation.RIGHT: pc_right,
-    PlayerOrientation.UP:    pc_up,
-    PlayerOrientation.DOWN:  pc_down,
-    }
-
-
 
 class Player:
     def __init__(self, position):
         game.key_handler = self
+        self.actor = scene.spawn_player(position)
         self.position = position
-        self.screen_position = map_to_screen(position)
 
         # what should be the player's initial orientation?
         # it doesn't really matter.  let's pick something cromulent.
@@ -563,6 +518,7 @@ class Player:
         else:
             self.orientation = PlayerOrientation.LEFT
 
+        self.actor.set_orientation(self.orientation)
         self.animator = Animator(game.logics)
         self.halfway_timer = None
         self.moving = False
@@ -570,7 +526,6 @@ class Player:
     def _finished_animation(self):
         self.moving = False
         self.position = self.new_position
-        self.screen_position = self.animator.position
 
     def on_key(self, k):
         if k == key.B:
@@ -598,6 +553,7 @@ class Player:
         desired_orientation = key_to_orientation[k]
         if self.orientation != desired_orientation:
             self.orientation = desired_orientation
+            self.actor.set_orientation(desired_orientation)
             return
 
         x, y = self.position
@@ -614,57 +570,51 @@ class Player:
         self.moving = True
         self.new_position = new_position
         self.animator.animate(
-            map_to_screen(self.position),
-            map_to_screen(new_position),
+            self.actor, 'position',
+            new_position,
             player_movement_logics,
             self._finished_animation)
-
-    def render(self):
-        spr = pc_sprite[level.player.orientation]
-        if self.moving:
-            position = self.animator.position
-        else:
-            position = self.screen_position
-        # print("drawing player at", position)
-        spr.position = position
-        spr.draw()
 
 
 bombs = {}
 
-timed_bomb = load_sprite('timed-bomb.png')
-freeze_bomb = load_sprite('freeze-bomb.png')
-
-exploding_bomb_image = 'freeze-bomb.png'
 
 class Bomb:
     def __init__(self, position):
         self.position = position
+        self.actor = scene.spawn_bomb(self.position)
 
     def detonate(self, dt):
-        old_sprite_position = self.sprite.position
-        self.sprite.delete()
-        self.sprite = load_sprite(exploding_bomb_image)
-        self.sprite.position = old_sprite_position
+        self.actor.play('freeze-bomb')
         pyglet.clock.schedule_once(self.remove, exploding_bomb_interval)
 
     def remove(self, dt):
         del bombs[self.position]
-        self.sprite.delete()
+        self.actor.delete()
+
 
 class TimedBomb(Bomb):
     def __init__(self, position):
         super().__init__(position)
+        if level.get(position).water:
+            self.actor.play('bomb-float-1')
         pyglet.clock.schedule_once(self.detonate, timed_bomb_interval)
         bombs[self.position] = self
-        self.sprite = load_sprite('timed-bomb.png')
-        self.sprite.position = map_to_screen(position)
+
+
+class Scenery:
+    def __init__(self, position, sprite):
+        self.actor = scene.spawn_tree(position, sprite)
+
+    def remove(self, dt):
+        self.actor.delete()
 
 
 window = pyglet.window.Window(coords.WIDTH, coords.HEIGHT)
 
 game = Game()
-level = Level(map_width, map_height)
+scene = Scene()
+level = Level(scene, map_width, map_height)
 
 
 def screenshot_path():
@@ -692,9 +642,9 @@ def on_key_release(k, modifiers):
     return game.on_key_release(k, modifiers)
 
 
-grass = load_tile('grass.png')
-
+level_renderer = LevelRenderer(level)
 flow = FlowParticles(level)
+
 
 
 @window.event
@@ -702,16 +652,13 @@ def on_draw():
     gl.glClearColor(0.5, 0.55, 0.8, 0)
     window.clear()
 
-    flow.batch.draw()
-    level.batch.draw()
+    flow.draw()
+    level_renderer.draw()
 
     if not (level and level.player):
         return
 
-    level.player.render()
-
-    for bomb in bombs.values():
-        bomb.sprite.draw()
+    scene.draw()
 
 
 def timer_callback(dt):

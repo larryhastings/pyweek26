@@ -82,3 +82,6 @@ class FlowParticles:
             p.map_pos = map_pos
             new_particles.append(p)
         self.particles = new_particles
+
+    def draw(self):
+        self.batch.draw()
