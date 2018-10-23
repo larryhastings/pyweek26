@@ -3,6 +3,7 @@ import pyglet.image
 import pyglet.graphics
 
 from .coords import map_to_screen
+from .vec2d import Vec2D
 
 
 class LevelRenderer:
@@ -42,7 +43,7 @@ class LevelRenderer:
         batch = pyglet.graphics.Batch()
         sprites = []
         def q(x, y):
-            t = self.level.get((x, y))
+            t = self.level.get(Vec2D(x, y))
             return not t.water
         for x, y in self.level.coords():
             bitv = (
@@ -51,7 +52,7 @@ class LevelRenderer:
                 q(x + 1, y - 1) << 2 |
                 q(x + 1, y) << 3
             )
-            screenx, screeny = map_to_screen((x, y))
+            screenx, screeny = map_to_screen(Vec2D(x, y))
             tx, ty = self.tilemap[bitv]
             sprites.append(
                 pyglet.sprite.Sprite(

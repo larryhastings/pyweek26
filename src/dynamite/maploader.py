@@ -2,6 +2,8 @@ from collections import namedtuple
 
 import pyglet.resource
 
+from .vec2d import Vec2D
+
 
 Map = namedtuple('Map', 'width height tiles')
 
@@ -91,7 +93,8 @@ def load_map(filename, globals_=globals()):
                 raise MapFormatError(
                     f"The symbol {tile!r} does not appear in the legend."
                 ) from None
-            new_map[x, y] = eval(exp, globals_)
+            new_map[Vec2D(x, y)] = eval(exp, globals_)
+
     return Map(
         width=map_width,
         height=map_height,

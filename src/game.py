@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
+import collections
+import datetime
+from enum import Enum
+import itertools
+from pathlib import Path
+import random
 import sys
 import time
-import datetime
-import itertools
-import random
-from enum import Enum
-from pathlib import Path
 
 from pyglet import gl
 import pyglet.image
@@ -19,6 +20,7 @@ from dynamite.particles import FlowParticles
 from dynamite.level_renderer import LevelRenderer
 from dynamite.scene import Scene
 from dynamite.maploader import load_map
+from dynamite.vec2d import Vec2D
 
 
 
@@ -80,6 +82,9 @@ _key_repr = {
 key_repr = _key_repr.get
 
 
+
+
+
 class MapTile:
     water = False
     moving_water = False
@@ -87,27 +92,27 @@ class MapTile:
 
 
 class MapWater(MapTile):
-    current = (0, 0)
+    current = Vec2D(0, 0)
     water = True
 
 class MapMovingWater(MapWater):
     moving_water = True
 
 class MapWaterCurrentUp(MapMovingWater):
-    current = (0, -1)
+    current = Vec2D(0, -1)
 
 class MapWaterCurrentLeft(MapMovingWater):
-    current = (-1, 0)
+    current = Vec2D(-1, 0)
 
 class MapWaterCurrentRight(MapMovingWater):
-    current = (1, 0)
+    current = Vec2D(1, 0)
 
 class MapWaterCurrentDown(MapMovingWater):
-    current = (0, 1)
+    current = Vec2D(0, 1)
 
 
 class MapBlockage(MapTile):
-    current = (0, 0)
+    current = Vec2D(0, 0)
     water = True
 
 
@@ -363,7 +368,7 @@ class Level:
 
         player = None
         for coord in self.coords():
-            tile = self.map[coord]
+            tile = self.get(coord)
             if tile.spawn_item:
                 obj = tile.spawn_item(coord)
                 if isinstance(obj, Player):
@@ -372,18 +377,21 @@ class Level:
                     self.objects.append(obj)
             self.map[coord] = tile
 
+        self.entities = collections.defaultdict(list)
+
         if not player:
             raise Exception("No player position set!")
         self.player = player
 
     def get(self, pos):
+        pos = Vec2D(pos)
         return self.map.get(pos) or self.DEFAULT
 
     def coords(self):
         """Iterate over coordinates in the level."""
         for y in range(self.height):
             for x in range(self.width):
-                yield x, y
+                yield Vec2D(x, y)
 
 
 class Animator:
@@ -412,8 +420,7 @@ class Animator:
 
         self.finished = False
 
-        self.delta_x = end[0] - start[0]
-        self.delta_y = end[1] - start[1]
+        self.delta = end - start
 
     def cancel(self):
         if self.halfway_timer:
@@ -443,11 +450,7 @@ class Animator:
 
     @property
     def position(self):
-        ratio = self.timer.ratio
-        x, y = self.start
-        x += self.delta_x * ratio
-        y += self.delta_y * ratio
-        return (x, y)
+        return self.start + (self.delta * self.timer.ratio)
 
 
 class PlayerOrientation(Enum):
@@ -467,10 +470,10 @@ class PlayerAnimationState(Enum):
 
 
 key_to_movement_delta = {
-    key.UP:    ( 0, -1),
-    key.DOWN:  ( 0, +1),
-    key.LEFT:  (-1,  0),
-    key.RIGHT: (+1,  0),
+    key.UP:    Vec2D( 0, -1),
+    key.DOWN:  Vec2D( 0, +1),
+    key.LEFT:  Vec2D(-1,  0),
+    key.RIGHT: Vec2D(+1,  0),
     }
 
 key_to_opposite = {
@@ -481,10 +484,10 @@ key_to_opposite = {
     }
 
 orientation_to_position_delta = {
-    PlayerOrientation.RIGHT: (+1,  0),
-    PlayerOrientation.UP:    ( 0, -1),
-    PlayerOrientation.LEFT:  (-1,  0),
-    PlayerOrientation.DOWN:  ( 0, +1),
+    PlayerOrientation.RIGHT: Vec2D(+1,  0),
+    PlayerOrientation.UP:    Vec2D( 0, -1),
+    PlayerOrientation.LEFT:  Vec2D(-1,  0),
+    PlayerOrientation.DOWN:  Vec2D( 0, +1),
     }
 
 key_to_orientation = {
@@ -513,10 +516,9 @@ class Player:
         # |-----------|
         # |  R  |  L  |
         # +-----------+
-        x, y = position
-        if y <= coords.TILES_H // 2:
+        if position.y <= coords.TILES_H // 2:
             self.orientation = PlayerOrientation.DOWN
-        elif x <= coords.TILES_W // 2:
+        elif position.x <= coords.TILES_W // 2:
             self.orientation = PlayerOrientation.RIGHT
         else:
             self.orientation = PlayerOrientation.LEFT
@@ -573,9 +575,8 @@ class Player:
                 log("can't drop, player is moving")
                 return
             # drop bomb
-            delta_x, delta_y = orientation_to_position_delta[level.player.orientation]
-            x, y = level.player.position
-            bomb_position = x + delta_x, y + delta_y
+            delta = orientation_to_position_delta[level.player.orientation]
+            bomb_position = level.player.position + delta
             if bombs.get(bomb_position):
                 return
             TimedBomb(bomb_position)
@@ -611,10 +612,10 @@ class Player:
             self.actor.set_orientation(desired_orientation)
             return
 
-        x, y = self.position
-        delta_x, delta_y = delta
-        new_position = x + delta_x, y + delta_y
-        leap_position = x + (delta_x * 2), y + (delta_y * 2)
+        new_position = self.position + delta
+        leap_delta = delta * 2
+        leap_position = self.position + leap_delta
+        log(f"animating player, from {self.position} by {delta} to either {new_position} or {leap_position}")
         tile = level.get(new_position)
         if tile.water:
             new_position = leap_position
@@ -674,13 +675,11 @@ class Bomb:
 
     def animate_if_on_moving_water(self):
         tile = level.get(self.position)
-        log("bomb placed at", self.position, "tile is", repr(tile), tile)
+        log("bomb placed at", self.position, "tile is", tile)
         if tile.moving_water:
             log("animating bomb movement")
             self.animator = Animator(game.logics)
-            x, y = self.position
-            dx, dy = tile.current
-            self.new_position = x + dx, y + dy
+            self.new_position = self.position + tile.current
             # new_screen_position = map_to_screen(self.new_position)
             self.animator.animate(
                 self.actor, 'position',
