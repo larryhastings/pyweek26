@@ -701,7 +701,21 @@ window = pyglet.window.Window(coords.WIDTH, coords.HEIGHT)
 
 game = Game()
 scene = Scene()
-level = Level(scene, load_map('level1.txt', globals()))
+level = None
+
+def start_level(filename):
+    """Start the level with the given filename."""
+    global level
+    scene.clear()
+    level = Level(scene, load_map(filename, globals()))
+    level.name = filename
+    scene.level_renderer = LevelRenderer(level)
+    scene.flow = FlowParticles(level)
+
+
+def reload_level():
+    """Reload the current level."""
+    start_level(level.name)
 
 
 def screenshot_path():
@@ -717,20 +731,21 @@ def screenshot_path():
 
 @window.event
 def on_key_press(k, modifiers):
+    if k == key.F5:
+        reload_level()
+        return
+
     if k == key.F12:
         gl.glPixelTransferf(gl.GL_ALPHA_BIAS, 1.0)  # don't transfer alpha channel
         image = pyglet.image.ColorBufferImage(0, 0, window.width, window.height)
         image.save(screenshot_path())
         gl.glPixelTransferf(gl.GL_ALPHA_BIAS, 0.0)  # restore alpha channel transfer
+        return
     return game.on_key_press(k, modifiers)
 
 @window.event
 def on_key_release(k, modifiers):
     return game.on_key_release(k, modifiers)
-
-
-level_renderer = LevelRenderer(level)
-flow = FlowParticles(level)
 
 
 
@@ -739,8 +754,8 @@ def on_draw():
     gl.glClearColor(0.5, 0.55, 0.8, 0)
     window.clear()
 
-    flow.draw()
-    level_renderer.draw()
+    scene.flow.draw()
+    scene.level_renderer.draw()
 
     if not (level and level.player):
         return
@@ -750,7 +765,10 @@ def on_draw():
 
 def timer_callback(dt):
     game.timer(dt)
-    flow.update(dt)
+    scene.flow.update(dt)
+
+
+start_level('level1.txt')
 
 
 pyglet.clock.schedule_interval(timer_callback, callback_interval)
