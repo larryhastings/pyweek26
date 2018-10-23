@@ -33,7 +33,7 @@ callback_interval = 1/20
 
 
 player_movement_logics = typematic_interval / logic_interval
-
+player_movement_delay_logics = typematic_interval / logic_interval
 
 srcdir = Path(__file__).parent
 pyglet.resource.path = [
@@ -240,6 +240,9 @@ class Ticker:
             self.next = self.interval
             if self.callback:
                 self.callback()
+            # TODO a callback might remove a timer
+            # which means we'd be modifying the list
+            # while iterating which I think is still bad
             for t in self.timers:
                 t.advance(1)
         return callbacks
@@ -268,6 +271,8 @@ class Timer:
     def cancel(self):
         if self in self.clock.timers:
             self.clock.timers.remove(self)
+        # else:
+        #     print(f"[{game.logics.counter:05} warning: couldn't find timer for {self.name}")
 
     def advance(self, dt):
         if self.elapsed >= self.interval:
@@ -510,6 +515,13 @@ key_to_movement_delta = {
     key.RIGHT: (+1,  0),
     }
 
+key_to_opposite = {
+    key.UP:    key.DOWN,
+    key.DOWN:  key.UP,
+    key.LEFT:  key.RIGHT,
+    key.RIGHT: key.LEFT,
+    }
+
 orientation_to_position_delta = {
     PlayerOrientation.RIGHT: (+1,  0),
     PlayerOrientation.UP:    ( 0, -1),
@@ -555,6 +567,7 @@ class Player:
         self.animator = Animator(game.logics)
         self.halfway_timer = None
         self.moving = PlayerAnimationState.STATIONARY
+        self.start_moving_timer = None
         self.queued_key = None
 
     def _animation_halfway(self):
@@ -574,12 +587,25 @@ class Player:
         if self.held_key:
             self.on_key(self.held_key)
 
+    def cancel_start_moving(self):
+        if self.start_moving_timer:
+            # print(f"[{game.logics.counter:05} canceling start_moving_timer")
+            self.start_moving_timer.cancel()
+            self.start_moving_timer = None
+        # else:
+        #     print(f"[{game.logics.counter:05} no start_moving_timer to cancel")
+
     def on_key_press(self, k):
         if key_to_movement_delta.get(k):
+            # print(f"[{game.logics.counter:05} key press {key_repr(k)}")
+            self.cancel_start_moving()
             self.held_key = k
+            self.start_moving_timer = Timer("start moving " + key_repr(k), game.logics, player_movement_delay_logics, self._start_moving)
 
     def on_key_release(self, k):
         if k == self.held_key:
+            # print(f"[{game.logics.counter:05} key release {key_repr(k)}")
+            self.cancel_start_moving()
             self.held_key = None
 
     def on_key(self, k):
@@ -613,7 +639,11 @@ class Player:
                 # ignore
                 return
             self.queued_key = k
-            self.abort_movement()
+            # if we're quickly reversing direction,
+            # abort movement if possible
+            opposite_of_desired_orientation = key_to_orientation[key_to_opposite[k]]
+            if self.orientation == opposite_of_desired_orientation:
+                self.abort_movement()
             return
 
         if self.orientation != desired_orientation:
@@ -642,6 +672,12 @@ class Player:
             self._animation_finished,
             self._animation_halfway)
         # print(f"{game.logics.counter:5} starting animation of player from {self.position} to {new_position}")
+
+    def _start_moving(self):
+        # print(f"[{game.logics.counter:05} start moving! {key_repr(self.held_key)}")
+        assert self.held_key
+        self.on_key(self.held_key)
+        self.start_moving_timer = None
 
     def abort_movement(self):
         if self.moving != PlayerAnimationState.MOVING_ABORTABLE:
