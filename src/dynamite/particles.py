@@ -15,6 +15,8 @@ class FlowParticles:
         self.level = level
         self.batch = pyglet.graphics.Batch()
         self.particles = []
+        for _ in range(5):
+            self.update(0.3)
 
     def update(self, dt):
         water_tiles = {}

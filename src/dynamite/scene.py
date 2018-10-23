@@ -16,6 +16,10 @@ class Scene:
         Player.load()
         Explosion.load()
 
+    def clear(self):
+        self.objects.clear()
+        self.batch = pyglet.graphics.Batch()
+
     def draw(self):
         self.batch.invalidate()
         self.batch.draw()
