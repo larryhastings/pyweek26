@@ -18,6 +18,8 @@ from dynamite.coords import map_to_screen
 from dynamite.particles import FlowParticles
 from dynamite.level_renderer import LevelRenderer
 from dynamite.scene import Scene
+from dynamite.maploader import load_map
+
 
 timed_bomb_interval = 5
 exploding_bomb_interval = 1/10
@@ -38,27 +40,12 @@ player_movement_delay_logics = typematic_interval / logic_interval
 srcdir = Path(__file__).parent
 pyglet.resource.path = [
     'images',
+    'levels',
 ]
 pyglet.resource.reindex()
 
 LevelRenderer.load()
 FlowParticles.load()
-
-def load_sprite(name):
-    """Load a sprite and set the anchor position."""
-    pc = pyglet.resource.image(name)
-    pc.anchor_x = pc.width // 2
-    pc.anchor_y = pc.height // 2
-    return pyglet.sprite.Sprite(pc)
-
-
-def load_pc(name):
-    """Load a PC sprite and set the anchor position."""
-    pc = pyglet.resource.image(name)
-    pc.anchor_x = pc.width // 2
-    pc.anchor_y = 10
-    return pyglet.sprite.Sprite(pc)
-
 
 
 remapped_keys = {
@@ -88,101 +75,55 @@ _key_repr = {
     }
 key_repr = _key_repr.get
 
-map_legend = {}
-
-def legend(c):
-    assert len(c) == 1
-    assert c not in map_legend
-    def decorator(klass):
-        map_legend[c] = klass
-        klass.legend = c
-        return klass
-    return decorator
 
 class MapTile:
     water = False
     spawn_item = None
 
-@legend(".")
+
 class MapWater(MapTile):
     current = (0, 0)
     water = True
 
-@legend("^")
+
 class MapWaterCurrentUp(MapWater):
     current = (0, -1)
 
-@legend("<")
+
 class MapWaterCurrentLeft(MapWater):
     current = (-1, 0)
 
-@legend(">")
+
 class MapWaterCurrentRight(MapWater):
     current = (1, 0)
 
-@legend("v")
+
 class MapWaterCurrentDown(MapWater):
     current = (0, 1)
 
-@legend("X")
+
 class MapBlockage(MapTile):
     current = (0, 0)
     water = True
 
-@legend("#")
-class MapLand(MapTile):
+
+class MapGrass(MapTile):
     pass
 
-@legend("S")
-class MapSpawnPoint(MapLand):
-    def spawn_item(self, pos):
+
+class MapSpawnPoint(MapGrass):
+    @staticmethod
+    def spawn_item(pos):
         return Player(pos)
 
-@legend("T")
-class MapTree(MapTile):
+
+class MapScenery(MapTile):
+    def __init__(self, sprite):
+        self.sprite = sprite
+
     def spawn_item(self, pos):
-        return Scenery(pos, 'fir-tree')
+        return Scenery(pos, self.sprite)
 
-
-map_text = """
-...v<<<.......................
-..#v##^.......................
-.##v##^.......................
-.#.>>>^.......................
-.##.##X.......................
-.##.##^.......................
-.S#.##^##.....................
-.##.T###......................
-..............................
-"""
-# .S#.##^.......................
-# .S###########################.
-
-map = []
-
-for line in map_text.strip().split("\n"):
-    a = []
-    map.append(a)
-    for c in line:
-        a.append(map_legend[c]())
-
-for line in map:
-    assert len(line) == len(map[0])
-
-# the map is currently map[y][x].
-# now rotate map so x is first instead of y.
-# and index by tuple rather than nested list.
-# so that we get map[x, y]
-# (which is what tmx gives us)
-map_width = len(map[0])
-map_height = len(map)
-
-new_map = {}
-for y, line in enumerate(map):
-    for x, tile in enumerate(line):
-        new_map[x, y] = tile
-
-map = new_map
 
 class GameState(Enum):
     INVALID = 0
@@ -195,6 +136,7 @@ class GameState(Enum):
     GAME_OVER = 7
     GAME_WON = 8
     CONFIRM_EXIT = 9
+
 
 class Clock:
     """
@@ -405,22 +347,25 @@ class Game:
 
 
 class Level:
-    DEFAULT = MapWater()
+    DEFAULT = MapWater
 
-    def __init__(self, scene, width, height):
+    def __init__(self, scene, map_data):
         self.start = time.time()
-        self.map = {}
-        self.width = width
-        self.height = height
+        self.map = map_data.tiles
+        self.width = map_data.width
+        self.height = map_data.height
+
+        self.objects = []
 
         player = None
         for coord in self.coords():
-            tile = map[coord]
+            tile = self.map[coord]
             if tile.spawn_item:
                 obj = tile.spawn_item(coord)
                 if isinstance(obj, Player):
                     player = obj
-                tile = MapLand()
+                else:
+                    self.objects.append(obj)
             self.map[coord] = tile
 
         if not player:
@@ -660,11 +605,11 @@ class Player:
         delta_x, delta_y = delta
         new_position = x + delta_x, y + delta_y
         leap_position = x + (delta_x * 2), y + (delta_y * 2)
-        tile = map.get(new_position)
-        if (not tile) or isinstance(tile, MapWater):
+        tile = level.get(new_position)
+        if tile.water:
             new_position = leap_position
-            tile = map.get(new_position)
-            if (not tile) or isinstance(tile, MapWater):
+            tile = level.get(new_position)
+            if tile.water:
                 return
 
         self.moving = PlayerAnimationState.MOVING_ABORTABLE
@@ -756,7 +701,7 @@ window = pyglet.window.Window(coords.WIDTH, coords.HEIGHT)
 
 game = Game()
 scene = Scene()
-level = Level(scene, map_width, map_height)
+level = Level(scene, load_map('level1.txt', globals()))
 
 
 def screenshot_path():
