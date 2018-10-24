@@ -24,10 +24,8 @@ class FlowParticles:
     def update(self, dt):
         water_tiles = {}
         for pos in self.level.coords():
-            t = self.level.map.get(pos)
-            if t is None:
-                water_tiles[pos] = (0, 0)
-            elif t.water:
+            t = self.level.get(pos)
+            if t.water:
                 water_tiles[pos] = t.current
 
         new_particles = []
@@ -43,7 +41,7 @@ class FlowParticles:
 
             x, y = p.map_pos
             current = water_tiles.get((round(x), round(y)))
-            if not current:
+            if current is None:
                 continue
             curx, cury = current
 

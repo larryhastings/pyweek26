@@ -392,7 +392,6 @@ class Level:
         self.player = player
 
     def get(self, pos):
-        pos = Vec2D(pos)
         return self.map.get(pos) or self.DEFAULT
 
     def coords(self):
