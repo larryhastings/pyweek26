@@ -914,12 +914,19 @@ class Bomb(Entity):
         super().__init__(position)
 
         self.actor = scene.spawn_bomb(self.position, self.sprite_name)
-        if level.get(position).water:
+        self.floating = level.get(position).water
+        if self.floating:
             self.collision_resolution = CollisionResolution.NAVIGABLE
-            self.actor.play(f'{self.sprite_name}-float')
         self.animator = None
         self.occupant = None
+
+        self.actor.z = 50
+        tween(self.actor, 'accelerate', duration=0.2, on_finished=self.on_bomb_land, z=0)
         self.animate_if_on_moving_water()
+
+    def on_bomb_land(self):
+        if self.floating:
+            self.actor.play(f'{self.sprite_name}-float')
 
     def animate_if_on_moving_water(self):
         tile = level.get(self.position)
@@ -980,10 +987,6 @@ class TimedBomb(Bomb):
 
     def __init__(self, position):
         super().__init__(position)
-
-        self.floating = level.get(position).water
-        if self.floating:
-            self.actor.play('timed-bomb-float')
 
         # TODO convert these to our own timers
         # otherwise they'll still fire when we pause the game

@@ -186,7 +186,7 @@ class Actor:
     def z(self):
         return self._z
 
-    @position.setter
+    @z.setter
     def z(self, v):
         self._z = v
         self.position = self._pos  # trigger sprite update
