@@ -11,7 +11,7 @@ class Scene:
         self.objects = set()
         self.batch = pyglet.graphics.Batch()
 
-        Tree.load()
+        Static.load()
         Bomb.load()
         Player.load()
         Explosion.load()
@@ -24,8 +24,8 @@ class Scene:
         self.batch.invalidate()
         self.batch.draw()
 
-    def spawn_tree(self, position, sprite='fir-tree'):
-        return Tree(self, position, sprite)
+    def spawn_static(self, position, sprite):
+        return Static(self, position, sprite)
 
     def spawn_bomb(self, position, sprite='timed-bomb'):
         return Bomb(self, position, sprite)
@@ -207,7 +207,11 @@ class Explosion(Actor):
         self.sprite.scale = 2.0
 
 
-class Tree(Actor):
+class Static(Actor):
+    """All static objects can go here."""
     SPRITES = [
         'fir-tree',
+        'dispenser-contact-bomb',
+        'dispenser-timed-bomb',
+        'dispenser-freeze-bomb',
     ]

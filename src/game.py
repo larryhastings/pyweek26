@@ -161,6 +161,14 @@ class MapScenery(MapTile):
         return Scenery(pos, self.sprite)
 
 
+class MapDispenser(MapTile):
+    def __init__(self, type):
+        self.type = type
+
+    def spawn_item(self, pos):
+        return Dispenser(pos, self.type)
+
+
 class GameState(Enum):
     INVALID = 0
     MAIN_MENU = 1
@@ -410,7 +418,6 @@ class Level:
         self.player = None
 
     def get(self, pos):
-        pos = Vec2D(pos)
         return self.map.get(pos) or self.DEFAULT
 
     def coords(self):
@@ -774,7 +781,9 @@ class Bomb(Entity):
     def __init__(self, position):
         super().__init__(position)
 
-        self.actor = scene.spawn_bomb(self.position)
+        self.actor = scene.spawn_bomb(self.position, self.sprite_name)
+        if level.get(position).water:
+            self.actor.play(f'{self.sprite_name}-float')
         self.animator = None
         self.animate_if_on_moving_water()
 
@@ -816,11 +825,14 @@ class Bomb(Entity):
 
 
 class TimedBomb(Bomb):
+    sprite_name = 'timed-bomb'
+
     def __init__(self, position):
         super().__init__(position)
 
         if level.get(position).water:
             self.actor.play('timed-bomb-float')
+
         # TODO convert these to our own timers
         # otherwise they'll still fire when we pause the game
         Timer("bomb toggle red", game.logics, timed_bomb_interval * 0.5, self.toggle_red)
@@ -843,10 +855,18 @@ class Scenery(Entity):
 
     def __init__(self, position, sprite):
         super().__init__(position)
-        self.actor = scene.spawn_tree(position, sprite)
+        self.actor = scene.spawn_static(position, sprite)
 
     def remove(self, dt):
         self.actor.delete()
+
+
+class Dispenser(Scenery):
+    """A dispenser for bombs."""
+
+    def __init__(self, position, bomb_type):
+        super().__init__(position, f'dispenser-{bomb_type.sprite_name}')
+        self.bomb_type = bomb_type
 
 
 
@@ -922,7 +942,7 @@ def on_key_release(k, modifiers):
 
 @window.event
 def on_draw():
-    gl.glClearColor(0.5, 0.55, 0.8, 0)
+    gl.glClearColor(66 / 255, 125 / 255, 193 / 255, 0)
     window.clear()
 
     scene.flow.draw()

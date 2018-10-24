@@ -7,6 +7,9 @@ from .coords import map_to_screen
 class FlowParticles:
     """Particles that indicate the flow of water."""
 
+    SPEED = 0.6
+    DRAG = 0.3
+
     @classmethod
     def load(cls):
         cls.ripple = pyglet.resource.image('ripple.png')
@@ -21,10 +24,8 @@ class FlowParticles:
     def update(self, dt):
         water_tiles = {}
         for pos in self.level.coords():
-            t = self.level.map.get(pos)
-            if t is None:
-                water_tiles[pos] = (0, 0)
-            elif t.water:
+            t = self.level.get(pos)
+            if t.water:
                 water_tiles[pos] = t.current
 
         new_particles = []
@@ -40,20 +41,21 @@ class FlowParticles:
 
             x, y = p.map_pos
             current = water_tiles.get((round(x), round(y)))
-            if not current:
+            if current is None:
                 continue
             curx, cury = current
 
             vx, vy = p.v
 
-            frac = 0.5 ** dt
+            frac = self.DRAG ** dt
             invfrac = 1.0 - frac
             vx = frac * vx + invfrac * curx
             vy = frac * vy + invfrac * cury
 
             p.v = vx, vy
-            x += vx * dt * 0.3
-            y += vy * dt * 0.3
+            spd = dt * self.SPEED
+            x += vx * spd
+            y += vy * spd
             p.map_pos = x, y
             p.position = map_to_screen(p.map_pos)
             new_particles.append(p)
