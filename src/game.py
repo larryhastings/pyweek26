@@ -19,7 +19,7 @@ from dynamite import coords
 from dynamite.coords import map_to_screen
 from dynamite.particles import FlowParticles
 from dynamite.level_renderer import LevelRenderer
-from dynamite.scene import Scene
+import dynamite.scene
 from dynamite.maploader import load_map
 from dynamite.vec2d import Vec2D
 
@@ -647,6 +647,8 @@ key_to_orientation = {
 class Player(Entity):
     collision_resolution = CollisionResolution.INVALID
 
+    MAX_BOMBS = 2
+
     def __init__(self, position):
         super().__init__(position)
 
@@ -678,6 +680,30 @@ class Player(Entity):
         self.start_moving_timer = None
         self.queued_key = self.held_key = None
         self.standing_on_platform = None
+
+        self.bombs = []
+
+    def push_bomb(self, bomb):
+        """Pick up a bomb."""
+        if len(self.bombs) == self.MAX_BOMBS:
+            return
+        self.bombs.append(bomb)
+        for s in self.actor.attached:
+            s.y += 30
+        self.actor.attach(
+            dynamite.scene.Bomb.sprites[bomb.sprite_name],
+            x=0,
+            y=80
+        )
+
+    def pop_bomb(self):
+        """Drop a bomb."""
+        if not self.bombs:
+            return None
+        self.actor.detach(self.actor.attached[-1])
+        for s in self.actor.attached:
+            s.y -= 30
+        return self.bombs.pop()
 
     def facing_pos(self):
         """Get the position the player is facing."""
@@ -755,12 +781,15 @@ class Player(Entity):
                 log("can't drop, player is moving")
                 return
             # drop bomb
+            if not level.player.bombs:
+                return
             bomb_position = level.player.facing_pos()
             resolution = level.collision(bomb_position, Occupyability.BOMBS)
             if resolution != CollisionResolution.NO_COLLISION:
                 log(f"can't drop, tile collision is {resolution!r}")
                 return
-            TimedBomb(bomb_position)
+            cls = level.player.pop_bomb()
+            cls(bomb_position)
             return
 
         delta = key_to_movement_delta.get(k)
@@ -987,6 +1016,9 @@ class Dispenser(Scenery):
         super().__init__(position, f'dispenser-{bomb_type.sprite_name}')
         self.bomb_type = bomb_type
 
+    def interact(self, player):
+        player.push_bomb(self.bomb_type)
+
 
 
 # We have to start with the window invisible in order to be able to set
@@ -1004,7 +1036,7 @@ window.set_visible(True)
 
 
 game = Game()
-scene = Scene()
+scene = dynamite.scene.Scene()
 level = None
 
 def start_level(filename):

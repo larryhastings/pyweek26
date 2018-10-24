@@ -1,4 +1,6 @@
 import operator
+from itertools import chain
+
 import pyglet.resource
 import pyglet.graphics
 import pyglet.sprite
@@ -81,6 +83,14 @@ class ImageSequence:
         )
 
 
+class ActorGroup(pyglet.graphics.OrderedGroup):
+    def __hash__(self):
+        return id(self)
+
+    def __eq__(self, ano):
+        return self is ano
+
+
 class Actor:
     DEFAULT_Z = 0
 
@@ -102,17 +112,21 @@ class Actor:
         self._pos = position
         self._z = self.DEFAULT_Z
 
+        self.group = ActorGroup(self.z_order())
+        self.attach_group = pyglet.graphics.OrderedGroup(1, self.group)
+
         x, y = map_to_screen(position)
         self.sprite = pyglet.sprite.Sprite(
             self.sprites[sprite_name],
             x, y,
-            group=pyglet.graphics.OrderedGroup(self.z_order()),
+            group=pyglet.graphics.OrderedGroup(0, self.group),
             batch=scene.batch,
         )
         self.anim = sprite_name
 
         self.scene = scene
         self.scene.objects.add(self)
+        self.attached = []
 
     def z_order(self):
         return (self._pos[1], self._z)
@@ -131,8 +145,12 @@ class Actor:
         self._pos = v
         if not self.scene:
             return
-        self.sprite.position = x, y + self._z
-        self.sprite.group = pyglet.graphics.OrderedGroup(self.z_order())
+        dx = x - self.sprite.x
+        dy = y + self._z - self.sprite.y
+        self.group.order = self.z_order()
+        for sprite in chain([self.sprite], self.attached):
+            sprite.x += dx
+            sprite.y += dy
 
     @property
     def z(self):
@@ -146,7 +164,28 @@ class Actor:
     def delete(self):
         self.scene.objects.remove(self)
         self.sprite.delete()
+        for spr in self.attached:
+            spr.delete()
         self.scene = None
+
+    def attach(self, img, x, y):
+        """Attach another sprite on top of this."""
+        px, py = self.sprite.position
+
+        sprite = pyglet.sprite.Sprite(
+            img,
+            x=x + px,
+            y=y + py,
+            group=self.attach_group,
+            batch=self.sprite.batch,
+        )
+        self.attached.append(sprite)
+        return sprite
+
+    def detach(self, sprite):
+        self.attached.remove(sprite)
+        sprite.delete()
+
 
 
 class Player(Actor):
