@@ -36,10 +36,14 @@ class Vec2D:
         yield self.x
         yield self.y
 
+    def __len__(self):
+        return 2
+
     def __eq__(self, o):
-        if not isinstance(o, Vec2D):
+        try:
+            ox, oy = o
+        except Exception:
             return False
-        ox, oy = o
         x, y = self
         return ox == x and oy == y
 
@@ -54,4 +58,3 @@ class Vec2D:
 
     def __str__(self):
         return self.__repr__()
-
