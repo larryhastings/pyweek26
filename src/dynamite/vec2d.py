@@ -36,6 +36,13 @@ class Vec2D:
         yield self.x
         yield self.y
 
+    def __eq__(self, o):
+        if not isinstance(o, Vec2D):
+            return False
+        ox, oy = o
+        x, y = self
+        return ox == x and oy == y
+
     def __bool__(self):
         return bool(self.x or self.y)
 
@@ -45,12 +52,6 @@ class Vec2D:
     def __repr__(self):
         return f"Vec2D({self.x}, {self.y})"
 
-    def __eq__(self, o):
-        if not isinstance(o, Vec2D):
-            return False
-        ox, oy = o
-        x, y = self
-        return ox == x and oy == y
-
     def __str__(self):
         return self.__repr__()
+
