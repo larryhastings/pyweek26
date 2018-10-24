@@ -46,6 +46,8 @@ class Vec2D:
         return f"Vec2D({self.x}, {self.y})"
 
     def __eq__(self, o):
+        if not isinstance(o, Vec2D):
+            return False
         ox, oy = o
         x, y = self
         return ox == x and oy == y

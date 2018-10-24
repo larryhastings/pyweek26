@@ -66,6 +66,7 @@ remapped_keys = {
     key.ESCAPE: key.ESCAPE,
     key.ENTER: key.ENTER,
     key.B: key.B,
+    key.L: key.L,
     }
 interesting_key = remapped_keys.get
 
@@ -78,6 +79,7 @@ _key_repr = {
     key.ENTER: "Enter",
 
     key.B: "B",
+    key.L: "L",
     }
 key_repr = _key_repr.get
 
@@ -152,8 +154,6 @@ class MapSpawnPoint(MapGrass):
 
 
 class MapScenery(MapTile):
-    player_can_occupy = True
-
     def __init__(self, sprite):
         self.sprite = sprite
 
@@ -428,6 +428,7 @@ class Level:
 
     def tile_collision(self, coord, occupyability=Occupyability.PLAYER):
         tile = self.get(coord)
+        log(f"tile_collision({coord}): tile {tile}")
         if tile.occupyability > occupyability:
             log(f"tile_collision({coord}): returning COLLISION, unoccupiable tile (tile {tile.occupyability!r} > {occupyability!r})")
             return CollisionResolution.COLLISION
@@ -462,7 +463,7 @@ class Animator:
         self.clock = clock
         self.timer = self.halfway_timer = None
 
-    def animate(self, obj, property, end, interval, callback=None, halfway_callback=None):
+    def animate(self, obj, property, end, interval, callback=None, halfway_callback=None, tick_callback=None):
         self.cancel()
 
         self.obj = obj
@@ -473,14 +474,13 @@ class Animator:
         self.interval = interval
         self.callback = callback
         self.halfway_callback = halfway_callback
+        self.tick_callback = tick_callback
 
         self.timer = Timer("animator", self.clock, interval, self._complete, on_tick=self._on_tick)
         if halfway_callback:
             self.halfway_timer = Timer("animator halfway", self.clock, interval / 2, self._halfway)
 
         self.finished = False
-
-        self.delta = end - start
 
     def cancel(self):
         if self.halfway_timer:
@@ -490,6 +490,7 @@ class Animator:
             self.timer.cancel()
             self.timer = None
         self.obj = self.property = None
+        self.occupant = None
 
     @property
     def ratio(self):
@@ -502,6 +503,8 @@ class Animator:
 
     def _on_tick(self):
         setattr(self.obj, self.property, self.position)
+        if self.tick_callback:
+            self.tick_callback()
 
     def _complete(self):
         self.finished = True
@@ -510,13 +513,14 @@ class Animator:
 
     @property
     def position(self):
-        return self.start + (self.delta * self.timer.ratio)
+        return self.start + ((self.end - self.start) * self.timer.ratio)
 
 
 class Entity:
     def __init__(self, position):
-        self.position = position
         self.occupied_tiles = set()
+
+        self.position = position
         self.occupy(position)
 
     def occupy(self, coord):
@@ -538,8 +542,6 @@ class Entity:
             entities = level.entities[coord]
             assert self in entities
             entities.remove(self)
-            for e in entities:
-                e.on_departed(self, coord)
 
     def on_departed(self, entity, coord):
         """
@@ -547,6 +549,32 @@ class Entity:
         but it has just left.
         """
         pass
+
+    _position = None
+    @property
+    def position(self):
+        return self._position
+
+    @position.setter
+    def position(self, position):
+        if not isinstance(position, Vec2D):
+            position = Vec2D(position)
+
+        if self._position == position:
+            return
+
+        old_position = self._position
+        self._position = position
+
+        if old_position is not None:
+            self.depart(old_position)
+            for e in level.entities[old_position]:
+                e.on_departed(self, old_position)
+
+        self.occupy(position)
+        for e in level.entities[position]:
+            e.on_occupied(self, position)
+
 
 
 class PlayerOrientation(Enum):
@@ -628,6 +656,26 @@ class Player(Entity):
         self.moving = PlayerAnimationState.STATIONARY
         self.start_moving_timer = None
         self.queued_key = self.held_key = None
+        self.standing_on_platform = None
+
+    def on_platform_moved(self, platform):
+        # if platform stops existing, it calls us with None
+        # but! it's an exploding bomb! so we're about to die anyway.
+        if platform is None:
+            return
+
+        if self.moving == PlayerAnimationState.MOVING_ABORTABLE:
+            self.new_position = platform.position
+        else:
+            assert self.moving in (PlayerAnimationState.MOVING_COMMITTED, PlayerAnimationState.STATIONARY)
+            self.position = platform.position
+
+    def on_platform_animated(self, position):
+        if ((self.moving != PlayerAnimationState.STATIONARY)
+            and self.animator):
+            self.animator.end = position
+        elif self.actor:
+            self.actor.position = position
 
     def _animation_halfway(self):
         self.moving = PlayerAnimationState.MOVING_COMMITTED
@@ -669,6 +717,9 @@ class Player(Entity):
 
     def on_key(self, k):
         log(f"on key {key_repr(k)}")
+        if k == key.L:
+            # log!
+            return
         if k == key.B:
             if self.moving != PlayerAnimationState.STATIONARY:
                 log("can't drop, player is moving")
@@ -714,13 +765,17 @@ class Player(Entity):
             return
 
         new_position = self.position + delta
-        riding_bomb = False
         resolution = level.collision(new_position)
+        stepping_onto_platform = None
         # TODO okay this is a bit of a hack
         if ((resolution == CollisionResolution.COLLISION)
             and (level.tile_collision(new_position, Occupyability.BOMBS) == CollisionResolution.NO_COLLISION)
             and (level.entity_collision(new_position) == CollisionResolution.NAVIGABLE)):
-            riding_bomb = True
+            for e in level.entities[new_position]:
+                if (e.position == new_position) and isinstance(e, Bomb):
+                    stepping_onto_platform = e
+                    break
+            assert stepping_onto_platform
             resolution = CollisionResolution.NO_COLLISION
         if resolution == CollisionResolution.COLLISION:
             log("can't occupy space, sorry.")
@@ -735,6 +790,9 @@ class Player(Entity):
         #         return
 
         log(f"animating player, from {self.position} by {delta} to {new_position}")
+        if self.standing_on_platform:
+            self.standing_on_platform.on_stepped_on(None)
+            self.standing_on_platform = None
         self.moving = PlayerAnimationState.MOVING_ABORTABLE
         self.new_position = new_position
         self.starting_position = self.actor.position
@@ -744,6 +802,9 @@ class Player(Entity):
             player_movement_logics,
             self._animation_finished,
             self._animation_halfway)
+        if stepping_onto_platform:
+            self.standing_on_platform = stepping_onto_platform
+            self.standing_on_platform.on_stepped_on(self)
         # print(f"{game.logics.counter:5} starting animation of player from {self.position} to {new_position}")
 
     def _start_moving(self):
@@ -755,6 +816,8 @@ class Player(Entity):
     def abort_movement(self):
         if self.moving != PlayerAnimationState.MOVING_ABORTABLE:
             return
+        if self.standing_on_platform:
+            self.standing_on_platform.on_stepped_on(None)
         self.moving = PlayerAnimationState.MOVING_COMMITTED
         starting_position = self.animator.position
         self.animator.animate(
@@ -763,58 +826,77 @@ class Player(Entity):
             player_movement_logics / 3,
             self._animation_finished)
 
-    def render(self):
-        spr = pc_sprite[level.player.orientation]
-        if self.moving != PlayerAnimationState.STATIONARY:
-            position = self.animator.position
-        else:
-            position = self.screen_position
-        # print("drawing player at", position)
-        spr.position = position
-        spr.draw()
+    # def render(self):
+    #     spr = pc_sprite[level.player.orientation]
+    #     if self.moving != PlayerAnimationState.STATIONARY:
+    #         position = self.animator.position
+    #     else:
+    #         position = self.screen_position
+    #     # print("drawing player at", position)
+    #     spr.position = position
+    #     spr.draw()
 
 
 
 class Bomb(Entity):
-    collision_resolution = CollisionResolution.NAVIGABLE
+    collision_resolution = CollisionResolution.COLLISION
 
     def __init__(self, position):
         super().__init__(position)
 
         self.actor = scene.spawn_bomb(self.position, self.sprite_name)
         if level.get(position).water:
+            self.collision_resolution = CollisionResolution.NAVIGABLE
             self.actor.play(f'{self.sprite_name}-float')
         self.animator = None
+        self.occupant = None
         self.animate_if_on_moving_water()
 
     def animate_if_on_moving_water(self):
         tile = level.get(self.position)
-        log("bomb placed at", self.position, "tile is", tile)
-        if tile.moving_water:
-            log("animating bomb movement")
-            self.animator = Animator(game.logics)
-            self.new_position = self.position + tile.current
-            self.occupy(self.new_position)
-            # new_screen_position = map_to_screen(self.new_position)
-            self.animator.animate(
-                self.actor, 'position',
-                self.new_position,
-                water_speed_logics,
-                self._animation_finished,
-                self._animation_halfway)
+        self.moving = tile.moving_water
+        log("bomb placed at", self.position, "tile is", tile, "moving?", self.moving)
+
+        if not self.moving:
+            return
+
+        log("animating bomb movement")
+        self.animator = Animator(game.logics)
+        self.new_position = self.position + tile.current
+        self.occupy(self.new_position)
+        # new_screen_position = map_to_screen(self.new_position)
+        self.animator.animate(
+            self.actor, 'position',
+            self.new_position,
+            water_speed_logics,
+            self._animation_finished,
+            self._animation_halfway,
+            self._animation_tick)
 
     def _animation_halfway(self):
         log("bomb halfway")
         self.depart(self.position)
         self.position = self.new_position
+        if self.occupant:
+            self.occupant.on_platform_moved(self)
 
     def _animation_finished(self):
         log("bomb finished moving")
         self.animate_if_on_moving_water()
 
+    def on_stepped_on(self, occupant):
+        self.occupant = occupant
+
+    def _animation_tick(self):
+        if self.animator and self.occupant:
+            self.occupant.on_platform_animated(self.animator.position)
+
     def detonate(self):
         if self.animator:
             self.animator.cancel()
+        if self.occupant:
+            self.occupant.on_platform_moved(None)
+            self.occupant = None
         self.remove()
         self.actor.scene.spawn_explosion(self.actor.position)
         self.actor.delete()
