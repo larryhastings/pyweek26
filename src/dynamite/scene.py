@@ -192,6 +192,8 @@ class Actor:
         self.position = self._pos  # trigger sprite update
 
     def delete(self):
+        if not self.scene:
+            return
         self.scene.objects.remove(self)
         self.sprite.delete()
         for spr in self.attached:

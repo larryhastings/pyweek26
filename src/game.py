@@ -31,19 +31,18 @@ from dynamite.animation import animate as tween
 # please ensure all the other intervals
 # are evenly divisible into this interval
 logics_per_second = 120
-logic_interval = 1/logics_per_second
+logic_interval = 1 / logics_per_second
 
+typematic_start = 1/10
 typematic_interval = 1/4
 typematic_delay = 1
 
 timed_bomb_interval = 5 * logics_per_second
 exploding_bomb_interval = (1/10) * logics_per_second
 
-callback_interval = 1/20
-
 
 player_movement_logics = typematic_interval * logics_per_second
-player_movement_delay_logics = typematic_interval * logics_per_second
+player_movement_delay_logics = typematic_start * logics_per_second
 
 water_speed_logics = 1 * logics_per_second
 
@@ -543,7 +542,7 @@ class Entity:
     def occupy(self, coord):
         if coord not in self.occupied_tiles:
             self.occupied_tiles.add(coord)
-            assert self not in level.entities[coord]
+        if self not in level.entities[coord]:
             level.entities[coord].append(self)
 
     def on_occupied(self, entity, coord):
@@ -558,10 +557,13 @@ class Entity:
 
     def depart(self, coord):
         if coord in self.occupied_tiles:
-            self.occupied_tiles.remove(coord)
             entities = level.entities[coord]
-            assert self in entities
-            entities.remove(self)
+            try:
+                entities.remove(self)
+            except ValueError:
+                pass
+            if not entities:
+                self.occupied_tiles.remove(coord)
 
     def on_departed(self, entity, coord):
         """
@@ -1005,11 +1007,15 @@ class TimedBomb(Bomb):
         clock.schedule(self.update_spark)
 
     def detonate(self):
+        self.spark = None
         clock.unschedule(self.update_spark)
         super().detonate()
 
     def update_spark(self, dt):
+        if not self.spark:
+            return
         self.t += dt
+
         self.spark.scale = 0.5 + 0.1 * math.sin(self.t * 10)
         self.spark.rotation += 1.5 * 360 * dt
 
@@ -1149,7 +1155,7 @@ def timer_callback(dt):
 start_level('level1.txt')
 
 pyglet.clock.schedule_interval(check_update_level, 1.0)
-pyglet.clock.schedule_interval(timer_callback, callback_interval)
+pyglet.clock.schedule(timer_callback)
 pyglet.app.run()
 
 # dump_log()
