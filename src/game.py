@@ -22,6 +22,7 @@ from dynamite.level_renderer import LevelRenderer
 import dynamite.scene
 from dynamite.maploader import load_map
 from dynamite.vec2d import Vec2D
+from dynamite.animation import animate as tween
 
 
 
@@ -688,21 +689,21 @@ class Player(Entity):
         if len(self.bombs) == self.MAX_BOMBS:
             return
         self.bombs.append(bomb)
-        for s in self.actor.attached:
-            s.y += 30
         self.actor.attach(
             dynamite.scene.Bomb.sprites[bomb.sprite_name],
             x=0,
-            y=80
+            y=60
         )
+        for n, s in enumerate(reversed(self.actor.attached)):
+            tween(s, tween='decelerate', duration=0.1, y=80 + 30 * n)
 
     def pop_bomb(self):
         """Drop a bomb."""
         if not self.bombs:
             return None
         self.actor.detach(self.actor.attached[-1])
-        for s in self.actor.attached:
-            s.y -= 30
+        for n, s in enumerate(reversed(self.actor.attached)):
+            tween(s, tween='accelerate', duration=0.2, y=80 + 30 * n)
         return self.bombs.pop()
 
     def facing_pos(self):
