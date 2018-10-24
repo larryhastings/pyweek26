@@ -1,6 +1,7 @@
 import operator
 from itertools import chain
 
+from pyglet import gl
 import pyglet.resource
 import pyglet.graphics
 import pyglet.sprite
@@ -82,13 +83,31 @@ class ImageSequence:
             loop=self.loop
         )
 
-
 class ActorGroup(pyglet.graphics.OrderedGroup):
     def __hash__(self):
         return id(self)
 
     def __eq__(self, ano):
         return self is ano
+
+
+class AttachmentGroup(pyglet.graphics.Group):
+    def __init__(self, obj, parent):
+        super().__init__(parent)
+        self.obj = obj
+
+    def set_state(self):
+        gl.glMatrixMode(gl.GL_MODELVIEW)
+        gl.glPushMatrix()
+        x, y = self.obj.position
+        gl.glTranslatef(x, y, 0)
+
+    def unset_state(self):
+        gl.glMatrixMode(gl.GL_MODELVIEW)
+        gl.glPopMatrix()
+
+    def __lt__(self, ano):
+        return False
 
 
 class Actor:
@@ -113,7 +132,6 @@ class Actor:
         self._z = self.DEFAULT_Z
 
         self.group = ActorGroup(self.z_order())
-        self.attach_group = pyglet.graphics.OrderedGroup(1, self.group)
 
         x, y = map_to_screen(position)
         self.sprite = pyglet.sprite.Sprite(
@@ -122,6 +140,7 @@ class Actor:
             group=pyglet.graphics.OrderedGroup(0, self.group),
             batch=scene.batch,
         )
+        self.attach_group = AttachmentGroup(self.sprite, self.group)
         self.anim = sprite_name
 
         self.scene = scene
@@ -145,12 +164,8 @@ class Actor:
         self._pos = v
         if not self.scene:
             return
-        dx = x - self.sprite.x
-        dy = y + self._z - self.sprite.y
+        self.sprite.position = x, y + self._z
         self.group.order = self.z_order()
-        for sprite in chain([self.sprite], self.attached):
-            sprite.x += dx
-            sprite.y += dy
 
     @property
     def z(self):
@@ -170,12 +185,10 @@ class Actor:
 
     def attach(self, img, x, y):
         """Attach another sprite on top of this."""
-        px, py = self.sprite.position
-
         sprite = pyglet.sprite.Sprite(
             img,
-            x=x + px,
-            y=y + py,
+            x=x,
+            y=y,
             group=self.attach_group,
             batch=self.sprite.batch,
         )
