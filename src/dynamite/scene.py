@@ -82,6 +82,8 @@ class ImageSequence:
 
 
 class Actor:
+    DEFAULT_Z = 0
+
     @classmethod
     def load(cls):
         if hasattr(cls, 'sprites'):
@@ -97,18 +99,23 @@ class Actor:
 
     def __init__(self, scene, position, sprite_name='default'):
         """Do not use this constructor - use methods of Scene."""
+        self._pos = position
+        self._z = self.DEFAULT_Z
+
         x, y = map_to_screen(position)
         self.sprite = pyglet.sprite.Sprite(
             self.sprites[sprite_name],
             x, y,
-            group=pyglet.graphics.OrderedGroup(-y),
+            group=pyglet.graphics.OrderedGroup(self.z_order()),
             batch=scene.batch,
         )
         self.anim = sprite_name
 
-        self._pos = position
         self.scene = scene
         self.scene.objects.add(self)
+
+    def z_order(self):
+        return (self._pos[1], self._z)
 
     def play(self, name):
         self.sprite.image = self.sprites[name]
@@ -124,8 +131,17 @@ class Actor:
         self._pos = v
         if not self.scene:
             return
-        self.sprite.position = x, y
-        self.sprite.group = pyglet.graphics.OrderedGroup(-y)
+        self.sprite.position = x, y + self._z
+        self.sprite.group = pyglet.graphics.OrderedGroup(self.z_order())
+
+    @property
+    def z(self):
+        return self._z
+
+    @position.setter
+    def z(self, v):
+        self._z = v
+        self.position = self._pos  # trigger sprite update
 
     def delete(self):
         self.scene.objects.remove(self)
@@ -134,6 +150,7 @@ class Actor:
 
 
 class Player(Actor):
+    DEFAULT_Z = 1
     SPRITES = [
         'pc-up',
         'pc-down',

@@ -819,8 +819,7 @@ class Player(Entity):
 
         log(f"animating player, from {self.position} by {delta} to {new_position}")
         if self.standing_on_platform:
-            self.standing_on_platform.on_stepped_on(None)
-            self.standing_on_platform = None
+            self.step_off()
         self.moving = PlayerAnimationState.MOVING_ABORTABLE
         self.new_position = new_position
         self.starting_position = self.actor.position
@@ -831,8 +830,7 @@ class Player(Entity):
             self._animation_finished,
             self._animation_halfway)
         if stepping_onto_platform:
-            self.standing_on_platform = stepping_onto_platform
-            self.standing_on_platform.on_stepped_on(self)
+            self.step_on(stepping_onto_platform)
         # print(f"{game.logics.counter:5} starting animation of player from {self.position} to {new_position}")
 
     def _start_moving(self):
@@ -841,11 +839,21 @@ class Player(Entity):
         self.on_key(self.held_key)
         self.start_moving_timer = None
 
+    def step_on(self, obj):
+        self.standing_on_platform = obj
+        obj.on_stepped_on(self)
+        self.actor.z = 20
+
+    def step_off(self):
+        if self.standing_on_platform:
+            self.standing_on_platform.on_stepped_on(None)
+            self.standing_on_platform = None
+            self.actor.z = 0
+
     def abort_movement(self):
         if self.moving != PlayerAnimationState.MOVING_ABORTABLE:
             return
-        if self.standing_on_platform:
-            self.standing_on_platform.on_stepped_on(None)
+        self.step_off()
         self.moving = PlayerAnimationState.MOVING_COMMITTED
         starting_position = self.animator.position
         self.animator.animate(
