@@ -8,12 +8,14 @@ from pathlib import Path
 import random
 import sys
 import time
+import math
 
 from pyglet import gl
 import pyglet.image
 import pyglet.window.key as key
 import pyglet.window.key
 import pyglet.resource
+from pyglet import clock
 
 from dynamite import coords
 from dynamite.coords import map_to_screen
@@ -979,7 +981,8 @@ class TimedBomb(Bomb):
     def __init__(self, position):
         super().__init__(position)
 
-        if level.get(position).water:
+        self.floating = level.get(position).water
+        if self.floating:
             self.actor.play('timed-bomb-float')
 
         # TODO convert these to our own timers
@@ -987,6 +990,25 @@ class TimedBomb(Bomb):
         Timer("bomb toggle red", game.logics, timed_bomb_interval * 0.5, self.toggle_red)
         Timer("bomb detonate", game.logics, timed_bomb_interval, self.detonate)
         self.start_time = game.logics.counter
+
+        sx, sy = (20, 27) if self.floating else (18, 35)
+        self.spark = self.actor.attach(
+            dynamite.scene.Bomb.sprites['spark'],
+            x=sx,
+            y=sy,
+        )
+        self.spark.scale = 0.5
+        self.t = 0
+        clock.schedule(self.update_spark)
+
+    def detonate(self):
+        clock.unschedule(self.update_spark)
+        super().detonate()
+
+    def update_spark(self, dt):
+        self.t += dt
+        self.spark.scale = 0.5 + 0.1 * math.sin(self.t * 10)
+        self.spark.rotation += 1.5 * 360 * dt
 
     def toggle_red(self):
         elapsed = game.logics.counter - self.start_time

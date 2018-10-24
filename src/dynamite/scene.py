@@ -41,22 +41,43 @@ class Scene:
 
 
 
-# Indicate an animation
-class ImageSequence:
+class AnchoredImg:
+    """An image that can be loaded later."""
+    def __init__(self, name, anchor_x='center', anchor_y='center'):
+        self.name = name
+        self.anchor_x = anchor_x
+        self.anchor_y = anchor_y
+
+    def _set_anchor(self, img):
+        if self.anchor_x == 'center':
+            img.anchor_x = img.width // 2
+        else:
+            img.anchor_x = self.anchor_x
+        if self.anchor_y == 'center':
+            img.anchor_y = img.height // 2
+        else:
+            img.anchor_y = self.anchor_y
+
+    def load(self):
+        img = pyglet.resource.image(f'{self.name}.png')
+        self._set_anchor(img)
+        return img
+
+
+class ImageSequence(AnchoredImg):
+    """An animation that can be loaded later."""
     def __init__(
             self,
             name,
             frames,
             delay=0.1,
-            anchor_x=0,
-            anchor_y=0,
+            anchor_x='center',
+            anchor_y='center',
             loop=False):
-        self.name = name
+        super().__init__(name, anchor_x, anchor_y)
         self.frames = frames
         self.delay = delay
         self.loop = loop
-        self.anchor_x = anchor_x
-        self.anchor_y = anchor_y
 
     def load(self):
         img = pyglet.resource.image(f'{self.name}.png')
@@ -68,20 +89,14 @@ class ImageSequence:
 
         images = list(grid)
         for img in images:
-            if self.anchor_x == 'center':
-                img.anchor_x = img.width // 2
-            else:
-                img.anchor_x = self.anchor_x
-            if self.anchor_y == 'center':
-                img.anchor_y = img.height // 2
-            else:
-                img.anchor_y = self.anchor_y
+            self._set_anchor(img)
 
         return pyglet.image.Animation.from_image_sequence(
             images,
             self.delay,
             loop=self.loop
         )
+
 
 class ActorGroup(pyglet.graphics.OrderedGroup):
     def __hash__(self):
@@ -119,7 +134,7 @@ class Actor:
             return
         cls.sprites = {}
         for spr in cls.SPRITES:
-            if isinstance(spr, ImageSequence):
+            if isinstance(spr, AnchoredImg):
                 s = cls.sprites[spr.name] = spr.load()
             else:
                 s = cls.sprites[spr] = pyglet.resource.image(f'{spr}.png')
@@ -235,7 +250,8 @@ class Bomb(Actor):
             anchor_x='center',
             anchor_y=14,
             loop=True,
-        )
+        ),
+        AnchoredImg('spark'),
     ]
     red = False
 
