@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import collections
 import datetime
 from enum import Enum, IntEnum
@@ -402,7 +403,7 @@ class Game:
 
 
 class Level:
-    DEFAULT = MapWater
+    DEFAULT = MapTile
 
     def set_map(self, map_data):
         self.map = map_data.tiles
@@ -1017,9 +1018,18 @@ def start_level(filename):
 
     level.set_map(map)
     level.name = filename
+    level.mtime = map.mtime
 
     scene.level_renderer = LevelRenderer(level)
     scene.flow = FlowParticles(level)
+
+
+
+def check_update_level(dt):
+    """Check whether the level data has been changed."""
+    d = Path(__file__).parent / 'levels'
+    if (d / level.name).stat().st_mtime != level.mtime:
+        reload_level()
 
 
 def reload_level():
@@ -1080,7 +1090,7 @@ def timer_callback(dt):
 
 start_level('level1.txt')
 
-
+pyglet.clock.schedule_interval(check_update_level, 1.0)
 pyglet.clock.schedule_interval(timer_callback, callback_interval)
 pyglet.app.run()
 

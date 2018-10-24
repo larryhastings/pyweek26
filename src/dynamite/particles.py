@@ -13,6 +13,8 @@ class FlowParticles:
     @classmethod
     def load(cls):
         cls.ripple = pyglet.resource.image('ripple.png')
+        cls.ripple.anchor_x = cls.ripple.width * 0.5
+        cls.ripple.anchor_y = cls.ripple.height * 0.5
 
     def __init__(self, level):
         self.level = level
