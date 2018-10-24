@@ -35,7 +35,7 @@ typematic_delay = 1
 timed_bomb_interval = 5 * logics_per_second
 exploding_bomb_interval = (1/10) * logics_per_second
 
-callback_interval = 1/20
+callback_interval = logic_interval
 
 
 player_movement_logics = typematic_interval * logics_per_second
@@ -1044,7 +1044,8 @@ def timer_callback(dt):
 start_level('level1.txt')
 
 
-pyglet.clock.schedule_interval(timer_callback, callback_interval)
+# pyglet.clock.schedule_interval(timer_callback, callback_interval)
+pyglet.clock.schedule(timer_callback)
 pyglet.app.run()
 
 # dump_log()
