@@ -7,6 +7,7 @@
 from math import sin, pow, pi
 
 import pyglet.clock
+import pyglet.sprite
 
 TWEEN_FUNCTIONS = {}
 
@@ -179,6 +180,11 @@ class Animation:
         self.animations.append(self)
 
     def update(self, dt):
+        if isinstance(self.object, pyglet.sprite.Sprite):
+            if self.object.image is None:
+                self.clock.unschedule(self.update)
+                self.animations.remove(self)
+                return
         self.t += dt
         n = self.t / self.duration
         if n > 1:
