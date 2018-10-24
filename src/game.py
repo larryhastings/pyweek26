@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import collections
 import datetime
-from enum import Enum
+from enum import Enum, IntEnum
 import itertools
 from pathlib import Path
 import random
@@ -82,18 +82,28 @@ _key_repr = {
 key_repr = _key_repr.get
 
 
+# the higher the value, the fewer things can occupy it
+class Occupyability(IntEnum):
+    INVALID = 0
+    PLAYER = 1   # player and bombs
+    BOMBS = 2    # bombs only
+    BLOCKED = 3  # nothing
 
+    def __repr__(self):
+        return "Occupyability." + self.name
 
 
 class MapTile:
     water = False
     moving_water = False
     spawn_item = None
+    occupyability = Occupyability.BLOCKED
 
 
 class MapWater(MapTile):
     current = Vec2D(0, 0)
     water = True
+    occupyability = Occupyability.BOMBS
 
 class MapMovingWater(MapWater):
     moving_water = True
@@ -117,7 +127,20 @@ class MapBlockage(MapTile):
 
 
 class MapGrass(MapTile):
-    pass
+    occupyability = Occupyability.PLAYER
+
+# the result of colliding with a tile is
+# the highest value CollisionResolution
+# of all the entities actually resting on
+# that tile
+class CollisionResolution(IntEnum):
+    INVALID = 0
+    NO_COLLISION = 1
+    NAVIGABLE = 2
+    COLLISION = 3
+
+    def __repr__(self):
+        return "CollisionResolution." + self.name
 
 
 class MapSpawnPoint(MapGrass):
@@ -126,7 +149,11 @@ class MapSpawnPoint(MapGrass):
         return Player(pos)
 
 
+
+
 class MapScenery(MapTile):
+    player_can_occupy = True
+
     def __init__(self, sprite):
         self.sprite = sprite
 
@@ -224,6 +251,7 @@ class Timer:
 
     def reset(self):
         self.elapsed = 0
+        self.paused = False
         assert self not in self.clock.timers
         self.clock.timers.append(self)
 
@@ -234,6 +262,8 @@ class Timer:
         #     print(f"[{game.logics.counter:05} warning: couldn't find timer for {self.name}")
 
     def advance(self, dt):
+        if self.paused:
+            return False
         if self.elapsed >= self.interval:
             return False
         self.elapsed += dt
@@ -358,30 +388,26 @@ class Game:
 class Level:
     DEFAULT = MapWater
 
-    def __init__(self, scene, map_data):
-        self.start = time.time()
+    def set_map(self, map_data):
         self.map = map_data.tiles
         self.width = map_data.width
         self.height = map_data.height
 
-        self.objects = []
-
-        player = None
         for coord in self.coords():
             tile = self.get(coord)
             if tile.spawn_item:
-                obj = tile.spawn_item(coord)
-                if isinstance(obj, Player):
-                    player = obj
-                else:
-                    self.objects.append(obj)
-            self.map[coord] = tile
+                o = tile.spawn_item(coord)
+                self.entities[coord].append(o)
+                if isinstance(o, Player):
+                    self.player = o
 
-        self.entities = collections.defaultdict(list)
-
-        if not player:
+        if not self.player:
             raise Exception("No player position set!")
-        self.player = player
+
+    def __init__(self):
+        self.start = time.time()
+        self.entities = collections.defaultdict(list)
+        self.player = None
 
     def get(self, pos):
         pos = Vec2D(pos)
@@ -392,6 +418,33 @@ class Level:
         for y in range(self.height):
             for x in range(self.width):
                 yield Vec2D(x, y)
+
+    def tile_collision(self, coord, occupyability=Occupyability.PLAYER):
+        tile = self.get(coord)
+        if tile.occupyability > occupyability:
+            log(f"tile_collision({coord}): returning COLLISION, unoccupiable tile (tile {tile.occupyability!r} > {occupyability!r})")
+            return CollisionResolution.COLLISION
+        log(f"tile_collision({coord}): returning NO_COLLISION")
+        return CollisionResolution.NO_COLLISION
+
+    def entity_collision(self, coord):
+        resolution = CollisionResolution.NO_COLLISION
+        for e in self.entities[coord]:
+            # ignore entities that aren't actually on that coordinate yet
+            if e.position != coord:
+                continue
+            log(f"entity_collision({coord}): entity {e} resolution {e.collision_resolution!r}")
+            resolution = max(resolution, e.collision_resolution)
+
+        log(f"entity_collision({coord}): result {resolution!r}")
+        return resolution
+
+    def collision(self, coord, occupyability=Occupyability.PLAYER):
+        resolution = self.tile_collision(coord, occupyability)
+        if resolution == CollisionResolution.NO_COLLISION:
+            resolution = self.entity_collision(coord)
+        log(f"collision({coord}): result {resolution!r}")
+        return resolution
 
 
 class Animator:
@@ -453,6 +506,42 @@ class Animator:
         return self.start + (self.delta * self.timer.ratio)
 
 
+class Entity:
+    def __init__(self, position):
+        self.position = position
+        self.occupied_tiles = set()
+        self.occupy(position)
+
+    def occupy(self, coord):
+        if coord not in self.occupied_tiles:
+            self.occupied_tiles.add(coord)
+            assert self not in level.entities[coord]
+            level.entities[coord].append(self)
+
+    def on_occupied(self, entity, coord):
+        """
+        entity is now on the tile at coord.
+        entity.position == coord
+        """
+        pass
+
+    def depart(self, coord):
+        if coord in self.occupied_tiles:
+            self.occupied_tiles.remove(coord)
+            entities = level.entities[coord]
+            assert self in entities
+            entities.remove(self)
+            for e in entities:
+                e.on_departed(self, coord)
+
+    def on_departed(self, entity, coord):
+        """
+        entity was on the tile at coord.
+        but it has just left.
+        """
+        pass
+
+
 class PlayerOrientation(Enum):
     RIGHT = 0
     UP = 1
@@ -499,11 +588,14 @@ key_to_orientation = {
 
 
 
-class Player:
+class Player(Entity):
+    collision_resolution = CollisionResolution.INVALID
+
     def __init__(self, position):
+        super().__init__(position)
+
         game.key_handler = self
         self.actor = scene.spawn_player(position)
-        self.position = position
 
         # what should be the player's initial orientation?
         # it doesn't really matter.  let's pick something cromulent.
@@ -577,7 +669,9 @@ class Player:
             # drop bomb
             delta = orientation_to_position_delta[level.player.orientation]
             bomb_position = level.player.position + delta
-            if bombs.get(bomb_position):
+            resolution = level.collision(bomb_position, Occupyability.BOMBS)
+            if resolution != CollisionResolution.NO_COLLISION:
+                log(f"can't drop, tile collision is {resolution!r}")
                 return
             TimedBomb(bomb_position)
             return
@@ -613,16 +707,27 @@ class Player:
             return
 
         new_position = self.position + delta
-        leap_delta = delta * 2
-        leap_position = self.position + leap_delta
-        log(f"animating player, from {self.position} by {delta} to either {new_position} or {leap_position}")
-        tile = level.get(new_position)
-        if tile.water:
-            new_position = leap_position
-            tile = level.get(new_position)
-            if tile.water:
-                return
+        riding_bomb = False
+        resolution = level.collision(new_position)
+        # TODO okay this is a bit of a hack
+        if ((resolution == CollisionResolution.COLLISION)
+            and (level.tile_collision(new_position, Occupyability.BOMBS) == CollisionResolution.NO_COLLISION)
+            and (level.entity_collision(new_position) == CollisionResolution.NAVIGABLE)):
+            riding_bomb = True
+            resolution = CollisionResolution.NO_COLLISION
+        if resolution == CollisionResolution.COLLISION:
+            log("can't occupy space, sorry.")
+            return
 
+        # leap_delta = delta * 2
+        # leap_position = self.position + leap_delta
+        # if level.collision(new_position) >= CollisionResolution.COLLISION:
+        #     new_position = leap_position
+        #     tile = level.get(new_position)
+        #     if level.collision(new_position) >= CollisionResolution.COLLISION:
+        #         return
+
+        log(f"animating player, from {self.position} by {delta} to {new_position}")
         self.moving = PlayerAnimationState.MOVING_ABORTABLE
         self.new_position = new_position
         self.starting_position = self.actor.position
@@ -662,13 +767,13 @@ class Player:
         spr.draw()
 
 
-bombs = {}
 
+class Bomb(Entity):
+    collision_resolution = CollisionResolution.NAVIGABLE
 
-class Bomb:
     def __init__(self, position):
-        self.position = position
-        bombs[self.position] = self
+        super().__init__(position)
+
         self.actor = scene.spawn_bomb(self.position)
         self.animator = None
         self.animate_if_on_moving_water()
@@ -680,6 +785,7 @@ class Bomb:
             log("animating bomb movement")
             self.animator = Animator(game.logics)
             self.new_position = self.position + tile.current
+            self.occupy(self.new_position)
             # new_screen_position = map_to_screen(self.new_position)
             self.animator.animate(
                 self.actor, 'position',
@@ -690,9 +796,8 @@ class Bomb:
 
     def _animation_halfway(self):
         log("bomb halfway")
-        del bombs[self.position]
+        self.depart(self.position)
         self.position = self.new_position
-        bombs[self.position] = self
 
     def _animation_finished(self):
         log("bomb finished moving")
@@ -707,13 +812,13 @@ class Bomb:
         Timer("bomb detonation", game.logics, exploding_bomb_interval, self.remove)
 
     def remove(self):
-        if self.position in bombs:
-            del bombs[self.position]
+        self.depart(self.position)
 
 
 class TimedBomb(Bomb):
     def __init__(self, position):
         super().__init__(position)
+
         if level.get(position).water:
             self.actor.play('timed-bomb-float')
         # TODO convert these to our own timers
@@ -733,8 +838,11 @@ class TimedBomb(Bomb):
             Timer("bomb toggle red again", game.logics, next, self.toggle_red)
 
 
-class Scenery:
+class Scenery(Entity):
+    collision_resolution = CollisionResolution.COLLISION
+
     def __init__(self, position, sprite):
+        super().__init__(position)
         self.actor = scene.spawn_tree(position, sprite)
 
     def remove(self, dt):
@@ -762,10 +870,16 @@ level = None
 
 def start_level(filename):
     """Start the level with the given filename."""
-    global level
     scene.clear()
-    level = Level(scene, load_map(filename, globals()))
+
+    global level
+    level = Level()
+
+    map = load_map(filename, globals())
+
+    level.set_map(map)
     level.name = filename
+
     scene.level_renderer = LevelRenderer(level)
     scene.flow = FlowParticles(level)
 
