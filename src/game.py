@@ -67,7 +67,8 @@ remapped_keys = {
     key.ENTER: key.ENTER,
     key.B: key.B,
     key.L: key.L,
-    }
+    key.E: key.E,
+}
 interesting_key = remapped_keys.get
 
 _key_repr = {
@@ -293,9 +294,16 @@ class Timer:
 log_start_time = time.time()
 
 def log(*a):
+    outer = sys._getframe(1)
+    fn = outer.f_code.co_name
+    lineno = outer.f_lineno
     elapsed = time.time() - log_start_time
     s = " ".join(str(x) for x in a)
-    print(f"[{elapsed:07.3f}:{game.logics.counter:5}]", s)
+    print(f"[{elapsed:07.3f}:{game.logics.counter:5}] {fn}()@{lineno}", s)
+
+if not __debug__:
+    def log(*a):
+        pass
 
 
 
@@ -426,6 +434,11 @@ class Level:
             for x in range(self.width):
                 yield Vec2D(x, y)
 
+    def top_entity(self, coords):
+        """Get the top entity at the given coordinates, or None if empty."""
+        es = self.entities[coords]
+        return es[0] if es else None
+
     def tile_collision(self, coord, occupyability=Occupyability.PLAYER):
         tile = self.get(coord)
         log(f"tile_collision({coord}): tile {tile}")
@@ -534,7 +547,10 @@ class Entity:
         entity is now on the tile at coord.
         entity.position == coord
         """
-        pass
+
+    def interact(self, player):
+        """Called when player interacts with this entity."""
+        log(f'{player} interacted with {type(self)} at {self.position}')
 
     def depart(self, coord):
         if coord in self.occupied_tiles:
@@ -585,6 +601,10 @@ class PlayerOrientation(Enum):
 
     def get_sprite(self):
         return ('right', 'up', 'left', 'down')[self.value]
+
+    def to_vec(self):
+        return orientation_to_position_delta[self]
+
 
 class PlayerAnimationState(Enum):
     INVALID = 0
@@ -658,6 +678,10 @@ class Player(Entity):
         self.queued_key = self.held_key = None
         self.standing_on_platform = None
 
+    def facing_pos(self):
+        """Get the position the player is facing."""
+        return self.position + self.orientation.to_vec()
+
     def on_platform_moved(self, platform):
         # if platform stops existing, it calls us with None
         # but! it's an exploding bomb! so we're about to die anyway.
@@ -720,13 +744,17 @@ class Player(Entity):
         if k == key.L:
             # log!
             return
+        if k == key.E:
+            target_obj = level.top_entity(level.player.facing_pos())
+            if not target_obj:
+                return
+            target_obj.interact(level.player)
         if k == key.B:
             if self.moving != PlayerAnimationState.STATIONARY:
                 log("can't drop, player is moving")
                 return
             # drop bomb
-            delta = orientation_to_position_delta[level.player.orientation]
-            bomb_position = level.player.position + delta
+            bomb_position = level.player.facing_pos()
             resolution = level.collision(bomb_position, Occupyability.BOMBS)
             if resolution != CollisionResolution.NO_COLLISION:
                 log(f"can't drop, tile collision is {resolution!r}")
@@ -1015,6 +1043,7 @@ def on_key_press(k, modifiers):
         gl.glPixelTransferf(gl.GL_ALPHA_BIAS, 0.0)  # restore alpha channel transfer
         return
     return game.on_key_press(k, modifiers)
+
 
 @window.event
 def on_key_release(k, modifiers):
