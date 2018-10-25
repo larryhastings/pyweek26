@@ -425,16 +425,16 @@ class Level:
         self.map = map_data.tiles
         self.width = map_data.width
         self.height = map_data.height
-        self.tile_occupant = {}
-        self.tile_queue = {}
+        self.tile_occupant = collections.defaultdict(None.__class__)
+        self.tile_queue = collections.defaultdict(list)
 
         for coord in self.coords():
-            self.tile_occupant[coord] = None
-            self.tile_queue[coord] = []
             tile = self.get(coord)
             if tile.spawn_item:
                 o = tile.spawn_item(coord)
                 if isinstance(o, Player):
+                    if self.player:
+                        sys.exit(f"Player set twice!  at {self.player.position} and {o.position}")
                     self.player = o
 
         if not self.player:
@@ -658,6 +658,10 @@ class Entity:
                 # if what we're standing on moved to this new position,
                 # guess what! the platform moved! we're not stepping off!
                 pass
+            elif self._fling:
+                # we're being flung.  our old position was a mystery for the ages.
+                # hopefully our final destination will be less so.
+                pass
             else:
                 assert False, f"I don't understand how we used to be on {old_position}, occupant is {old_occupant} and self.standing_on is {self.standing_on}"
 
@@ -760,6 +764,7 @@ class Entity:
         assert self._fling
         position = self._fling.destination
         self._fling = None
+        log(f"setting {self} position to {position}")
         self.position = position
 
     def interact(self, player):
@@ -1042,20 +1047,25 @@ class Player(Entity):
 
         if k == key.B:
             if self.moving != PlayerAnimationState.STATIONARY:
-                log("can't drop, player is moving")
+                log("can't drop a bomb, player is moving.")
                 return
             # drop bomb
             if not level.player.bombs:
+                log("can't drop a bomb, player is out of bombs.")
                 return
             bomb_position = level.player.facing_pos()
             result = self.can_move_to(bomb_position, OCCUPIABLE_BY_BOMB, "place bomb on")
+            log(f"{self} can we drop a bomb at {bomb_position}?  {result}")
             if not result:
                 return
-            if result is not True:
-                log("sorry, don't support skipping bombs on top of other bombs yet!")
-                return
             cls = level.player.pop_bomb()
-            cls(bomb_position)
+            bomb = cls(bomb_position)
+            if result is not True:
+                log(f"skipping bomb {bomb} across other bomb {result}")
+                delta = bomb_position - level.player.position
+                bomb.fling(delta)
+            else:
+                log(f"bomb {bomb} is fine where it is, not flinging/skipping.")
             return
 
         delta = key_to_movement_delta.get(k)
@@ -1220,7 +1230,7 @@ class Bomb(Entity):
         self.floating = level.get(position).water
         if self.floating:
             self.is_platform = True
-        self.animator = None
+        self.animator = Animator(game.logics)
         self.waiting_halfway = False
 
         self.actor.z = 50
@@ -1252,7 +1262,6 @@ class Bomb(Entity):
 
     def move_with_animation(self, position, logics):
         log(f"bomb {self} animating movement to {position}")
-        self.animator = Animator(game.logics)
         self.new_position = position
         current_occupant = level.tile_occupant.get(position)
         if current_occupant:
@@ -1387,14 +1396,14 @@ class Bomb(Entity):
         standing_on = self.standing_on
         self.on_fling_failed(fling) # cleanup!
 
+        super().on_fling_completed()
+        self.floating = level.get(self.position).water
         if not standing_on:
             log(f"{self} was flung, and has now landed at {fling.destination}.")
-            super().on_fling_completed()
             self.animate_if_on_moving_water()
         else:
             # re-fling!
             log(f"{self} was flung, but landed on {standing_on}, so we re-fling!")
-            self._fling = None
             self.fling(fling.original_delta)
 
 
