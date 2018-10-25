@@ -9,6 +9,7 @@ import random
 import sys
 import time
 import math
+import copy
 
 from pyglet import gl
 import pyglet.image
@@ -100,17 +101,38 @@ key_repr = _key_repr.get
 OCCUPIABLE_BY_PLAYER = 1
 OCCUPIABLE_BY_BOMB   = 2
 
-class MapTile:
+
+class TileMeta(type):
+    def __add__(self, ano):
+        return self() + ano
+
+
+class MapTile(metaclass=TileMeta):
     water = False
     moving_water = False
     spawn_item = None
     navigability = OCCUPIABLE_BY_PLAYER | OCCUPIABLE_BY_BOMB
+    obj_factory = None
+
+    def spawn_item(self, pos=None):
+        if pos is None:
+            return None
+        if self.obj_factory:
+            return self.obj_factory(pos)
+
+    def __add__(self, ano):
+        if self.obj_factory:
+            raise TypeError(f"{self} already has an obj_factory")
+        o = copy.copy(self)
+        o.obj_factory = ano
+        return o
 
 
 class MapWater(MapTile):
     current = Vec2D(0, 0)
     water = True
     navigability = OCCUPIABLE_BY_BOMB
+
 
 class MapMovingWater(MapWater):
     moving_water = True
@@ -142,10 +164,16 @@ class MapBlockage(MapMovingWater):
 class MapGrass(MapTile):
     navigability = OCCUPIABLE_BY_PLAYER | OCCUPIABLE_BY_BOMB
 
-class MapSpawnPoint(MapGrass):
-    @staticmethod
-    def spawn_item(pos):
-        return Player(pos)
+
+class LandSpawn(MapGrass):
+    def __init__(self, entity_type, *args, **kwargs):
+        self.type = entity_type
+        self.args = args
+        self.kwargs = kwargs
+
+    def spawn_item(self, pos):
+        return self.type(pos, *self.args, **self.kwargs)
+
 
 class MapScenery(MapGrass):
     def __init__(self, sprite):
@@ -153,13 +181,6 @@ class MapScenery(MapGrass):
 
     def spawn_item(self, pos):
         return Scenery(pos, self.sprite)
-
-class MapDispenser(MapGrass):
-    def __init__(self, type):
-        self.type = type
-
-    def spawn_item(self, pos):
-        return Dispenser(pos, self.type)
 
 
 class GameState(Enum):
@@ -528,6 +549,11 @@ class Entity:
     # a tile we're animating to but is currently occupied.
     queued_tile = None
 
+    @classmethod
+    def factory(cls, *args, **kwargs):
+        """Create a factory for entities of this type."""
+        return lambda position: cls(position, *args, **kwargs)
+
     def __init__(self, position):
         self.position = position
 
@@ -616,6 +642,10 @@ class Entity:
 
     def on_stepped_on(self, occupier):
         self.occupant = occupier
+
+    def remove(self):
+        self.unqueue_for_tile()
+        self.position = None
 
 
 class Claim(Entity):
@@ -1189,7 +1219,8 @@ class Scenery(Entity):
         super().__init__(position)
         self.actor = scene.spawn_static(position, sprite)
 
-    def remove(self, dt):
+    def remove(self, dt=None):
+        super().remove()
         self.actor.delete()
 
 
@@ -1203,6 +1234,13 @@ class Dispenser(Scenery):
     def interact(self, player):
         player.push_bomb(self.bomb_type)
 
+
+class Bush(Scenery):
+    def __init__(self, position):
+        super().__init__(position, 'bush')
+
+    def on_blasted(self, bomb, position):
+        self.remove()
 
 
 # We have to start with the window invisible in order to be able to set

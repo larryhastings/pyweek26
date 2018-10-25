@@ -312,10 +312,13 @@ class Static(Actor):
     """All static objects can go here."""
     SPRITES = [
         'fir-tree',
+        'bush',
         'beaver',
+        'beaver-left',
+        'beaver-right',
         AnchoredImg('beaver-dam', anchor_y=20),
         'log',
-        'dispenser-contact-bomb',
-        'dispenser-timed-bomb',
-        'dispenser-freeze-bomb',
+        AnchoredImg('dispenser-contact-bomb', anchor_y=30),
+        AnchoredImg('dispenser-timed-bomb', anchor_y=30),
+        AnchoredImg('dispenser-freeze-bomb', anchor_y=30),
     ]
