@@ -27,6 +27,13 @@ from dynamite.vec2d import Vec2D
 from dynamite.animation import animate as tween
 
 
+if '--no-tween' in sys.argv:
+    def tween(obj, tween=None, duration=None, on_finished=None, **targets):
+        for k, v in targets.items():
+            setattr(obj, k, v)
+        if on_finished:
+            on_finished()
+
 
 # please ensure all the other intervals
 # are evenly divisible into this interval
