@@ -90,29 +90,20 @@ _key_repr = {
     }
 key_repr = _key_repr.get
 
-
-# the higher the value, the fewer things can occupy it
-class Occupyability(IntEnum):
-    INVALID = 0
-    PLAYER = 1   # player and bombs
-    BOMBS = 2    # bombs only
-    BLOCKED = 3  # nothing
-
-    def __repr__(self):
-        return "Occupyability." + self.name
-
+OCCUPIABLE_BY_PLAYER = 1
+OCCUPIABLE_BY_BOMB   = 2
 
 class MapTile:
     water = False
     moving_water = False
     spawn_item = None
-    occupyability = Occupyability.BLOCKED
+    navigability = OCCUPIABLE_BY_PLAYER | OCCUPIABLE_BY_BOMB
 
 
 class MapWater(MapTile):
     current = Vec2D(0, 0)
     water = True
-    occupyability = Occupyability.BOMBS
+    navigability = OCCUPIABLE_BY_BOMB
 
 class MapMovingWater(MapWater):
     moving_water = True
@@ -142,39 +133,21 @@ class MapBlockage(MapMovingWater):
 
 
 class MapGrass(MapTile):
-    occupyability = Occupyability.PLAYER
-
-# the result of colliding with a tile is
-# the highest value CollisionResolution
-# of all the entities actually resting on
-# that tile
-class CollisionResolution(IntEnum):
-    INVALID = 0
-    NO_COLLISION = 1
-    NAVIGABLE = 2
-    COLLISION = 3
-
-    def __repr__(self):
-        return "CollisionResolution." + self.name
-
+    navigability = OCCUPIABLE_BY_PLAYER | OCCUPIABLE_BY_BOMB
 
 class MapSpawnPoint(MapGrass):
     @staticmethod
     def spawn_item(pos):
         return Player(pos)
 
-
-
-
-class MapScenery(MapTile):
+class MapScenery(MapGrass):
     def __init__(self, sprite):
         self.sprite = sprite
 
     def spawn_item(self, pos):
         return Scenery(pos, self.sprite)
 
-
-class MapDispenser(MapTile):
+class MapDispenser(MapGrass):
     def __init__(self, type):
         self.type = type
 
@@ -298,6 +271,12 @@ class Timer:
         self.cancel()
         return True
 
+    def pause(self):
+        self.paused = True
+
+    def unpause(self):
+        self.paused = False
+
     @property
     def ratio(self):
         return self.elapsed / self.interval
@@ -420,12 +399,15 @@ class Level:
         self.map = map_data.tiles
         self.width = map_data.width
         self.height = map_data.height
+        self.tile_occupant = {}
+        self.tile_queue = {}
 
         for coord in self.coords():
+            self.tile_occupant[coord] = None
+            self.tile_queue[coord] = []
             tile = self.get(coord)
             if tile.spawn_item:
                 o = tile.spawn_item(coord)
-                self.entities[coord].append(o)
                 if isinstance(o, Player):
                     self.player = o
 
@@ -434,7 +416,6 @@ class Level:
 
     def __init__(self):
         self.start = time.time()
-        self.entities = collections.defaultdict(list)
         self.player = None
 
     def get(self, pos):
@@ -448,36 +429,7 @@ class Level:
 
     def top_entity(self, coords):
         """Get the top entity at the given coordinates, or None if empty."""
-        es = self.entities[coords]
-        return es[0] if es else None
-
-    def tile_collision(self, coord, occupyability=Occupyability.PLAYER):
-        tile = self.get(coord)
-        log(f"tile_collision({coord}): tile {tile}")
-        if tile.occupyability > occupyability:
-            log(f"tile_collision({coord}): returning COLLISION, unoccupiable tile (tile {tile.occupyability!r} > {occupyability!r})")
-            return CollisionResolution.COLLISION
-        log(f"tile_collision({coord}): returning NO_COLLISION")
-        return CollisionResolution.NO_COLLISION
-
-    def entity_collision(self, coord):
-        resolution = CollisionResolution.NO_COLLISION
-        for e in self.entities[coord]:
-            # ignore entities that aren't actually on that coordinate yet
-            if e.position != coord:
-                continue
-            log(f"entity_collision({coord}): entity {e} resolution {e.collision_resolution!r}")
-            resolution = max(resolution, e.collision_resolution)
-
-        log(f"entity_collision({coord}): result {resolution!r}")
-        return resolution
-
-    def collision(self, coord, occupyability=Occupyability.PLAYER):
-        resolution = self.tile_collision(coord, occupyability)
-        if resolution == CollisionResolution.NO_COLLISION:
-            resolution = self.entity_collision(coord)
-        log(f"collision({coord}): result {resolution!r}")
-        return resolution
+        return self.tile_occupant[coords]
 
 
 class Animator:
@@ -517,6 +469,16 @@ class Animator:
         self.obj = self.property = None
         self.occupant = None
 
+    def pause(self):
+        self.timer.pause()
+        if self.halfway_timer:
+            self.halfway_timer.pause()
+
+    def unpause(self):
+        self.timer.unpause()
+        if self.halfway_timer:
+            self.halfway_timer.unpause()
+
     @property
     def ratio(self):
         return self.timer.ratio
@@ -542,38 +504,38 @@ class Animator:
 
 
 class Entity:
+    # are we a platform that other things can go on?
+    is_platform = False
+
+    # the entity we're currently standing on (if any).
+    # managed automatically for us by the "position" property.
+    standing_on = None
+
+    # the entity that's standing on us (if any).
+    occupant = None
+
+    # a proxy you use to claim a tile that
+    # you're not on right now, but which you
+    # want to animate to.
+    claim = None
+
+    # a tile we're animating to but is currently occupied.
+    queued_tile = None
+
     def __init__(self, position):
-        self.occupied_tiles = set()
-
         self.position = position
-        self.occupy(position)
 
-    def occupy(self, coord):
-        if coord not in self.occupied_tiles:
-            self.occupied_tiles.add(coord)
-            level.entities[coord].append(self)
+    def queue_for_tile(self, coord):
+        assert self.queued_tile == None, f"self.queued_tile is {self.queued_tile}, should be None"
+        self.queued_tile = coord
+        level.tile_queue[coord].append(self)
 
-    def on_occupied(self, entity, coord):
-        """
-        entity is now on the tile at coord.
-        entity.position == coord
-        """
+    def unqueue_for_tile(self):
+        if self.queued_tile:
+            level.tile_queue[self.queued_tile].remove(self)
+            self.queued_tile = None
 
-    def interact(self, player):
-        """Called when player interacts with this entity."""
-        log(f'{player} interacted with {type(self)} at {self.position}')
-
-    def depart(self, coord):
-        if coord in self.occupied_tiles:
-            entities = level.entities[coord]
-            try:
-                entities.remove(self)
-            except ValueError:
-                pass
-            if not entities:
-                self.occupied_tiles.remove(coord)
-
-    def on_departed(self, entity, coord):
+    def on_tile_available(self, entity, coord):
         """
         entity was on the tile at coord.
         but it has just left.
@@ -587,7 +549,7 @@ class Entity:
 
     @position.setter
     def position(self, position):
-        if not isinstance(position, Vec2D):
+        if (position is not None) and (not isinstance(position, Vec2D)):
             position = Vec2D(position)
 
         if self._position == position:
@@ -596,18 +558,80 @@ class Entity:
         old_position = self._position
         self._position = position
 
-        if old_position is not None:
-            self.depart(old_position)
-            for e in level.entities[old_position]:
-                e.on_departed(self, old_position)
+        departed_tile = None
 
-        self.occupy(position)
-        for e in level.entities[position]:
-            e.on_occupied(self, position)
+        new_occupant = level.tile_occupant.get(position)
+
+        if old_position is not None:
+            old_occupant = level.tile_occupant[old_position]
+            if old_occupant == self:
+                level.tile_occupant[old_position] = None
+                departed_tile = old_position
+            elif self.standing_on == old_occupant:
+                old_occupant.on_stepped_on(None)
+                self.standing_on = None
+            elif self.standing_on and (self.standing_on == new_occupant):
+                # if what we're standing on moved to this new position,
+                # guess what! the platform moved! we're not stepping off!
+                pass
+            else:
+                assert False, f"I don't understand how we used to be on {old_position}, occupant is {old_occupant} and self.standing_on is {self.standing_on}"
+
+        if position is not None:
+            if new_occupant in (None, self.claim):
+                level.tile_occupant[position] = self
+            elif new_occupant.is_platform:
+                assert new_occupant.occupant in (None, self, self.claim), f"we can't step on {new_occupant}, it's occupied by {new_occupant.occupant}"
+                self.standing_on = new_occupant
+                new_occupant.on_stepped_on(self)
+            else:
+                assert False, f"I don't understand how we can move to {position}"
+
+        if departed_tile:
+            # tell the next entity in the queue
+            # that they can have our old tile
+            tq = level.tile_queue[old_position]
+            if tq:
+                e = tq.pop(0)
+                assert e.position != old_position
+                e.on_tile_available(self, old_position)
+                new_occupant = level.tile_occupant[position]
+                assert (new_occupant == e) or (e.claim and new_occupant == e.claim)
+
+    def interact(self, player):
+        """Called when player interacts with this entity."""
+        log(f'{player} interacted with {type(self)} at {self.position}')
 
     def on_blasted(self, bomb, position):
+        if self.occupant:
+            self.occupant.on_blasted(self, self.position)
+            self.occupant.on_platform_moved(None)
+            self.occupant = None
+
+    def on_stepped_on(self, occupier):
+        self.occupant = occupier
+
+
+class Claim(Entity):
+    """
+    A "claim" is a token owned by an entity.
+    When the entity wants to animate from its
+    old position to a new position,
+    if the new position is unoccupied,
+    the entity will put its claim on that coordinate:
+        level.tile_occupant[coord] = self.claim
+    """
+    def __init__(self, owner):
+        self.owner = owner
+
+    def __repr__(self):
+        return f'Claim({owner.__class__.__name__})'
+
+    def on_platform_animated(self, position):
         pass
 
+    def on_platform_moved(self, position):
+        pass
 
 
 class Orientation(Enum):
@@ -661,14 +685,14 @@ key_to_orientation = {
 
 
 class Player(Entity):
-    collision_resolution = CollisionResolution.INVALID
-
     MAX_BOMBS = 2
 
     def __init__(self, position):
         super().__init__(position)
 
         game.key_handler = self
+
+        self.claim = Claim(self)
         self.actor = scene.spawn_player(position)
 
         # what should be the player's initial orientation?
@@ -695,7 +719,6 @@ class Player(Entity):
         self.moving = PlayerAnimationState.STATIONARY
         self.start_moving_timer = None
         self.queued_key = self.held_key = None
-        self.standing_on_platform = None
 
         self.bombs = []
 
@@ -782,16 +805,40 @@ class Player(Entity):
             self.cancel_start_moving()
             self.held_key = None
 
+    def can_move_to(self, new_position, navigability_mask=OCCUPIABLE_BY_PLAYER, verb="move to"):
+        occupant = level.tile_occupant[new_position]
+        if occupant and occupant != self.claim:
+            if not occupant.is_platform:
+                log(f"can't {verb} space, it's occupied by {occupant} which isn't a platform.")
+                return False
+            if occupant.occupant:
+                log(f"can't {verb} space, it's occupied by {occupant}, which *is* a platform, but already has {occupant.occupant} on it.")
+                return False
+            log(f"we can {verb} space!  current occupant is {occupant}, but it's a platform so it's cool.")
+            return occupant
+
+        tile = level.get(new_position)
+        if not (tile.navigability & navigability_mask):
+            log(f"can't {verb} space!  it's not navigable, and current occupant is {occupant}.")
+            return False
+        log(f"can {verb} space!  it's navigable, and current occupant is {occupant}.")
+        return True
+
+
     def on_key(self, k):
         log(f"on key {key_repr(k)}")
+
         if k == key.L:
-            # log!
+            # log!  that's all L does.
             return
+
         if k == key.E:
             target_obj = level.top_entity(level.player.facing_pos())
             if not target_obj:
                 return
             target_obj.interact(level.player)
+            return
+
         if k == key.B:
             if self.moving != PlayerAnimationState.STATIONARY:
                 log("can't drop, player is moving")
@@ -800,9 +847,11 @@ class Player(Entity):
             if not level.player.bombs:
                 return
             bomb_position = level.player.facing_pos()
-            resolution = level.collision(bomb_position, Occupyability.BOMBS)
-            if resolution != CollisionResolution.NO_COLLISION:
-                log(f"can't drop, tile collision is {resolution!r}")
+            result = self.can_move_to(bomb_position, OCCUPIABLE_BY_BOMB, "place bomb on")
+            if not result:
+                return
+            if result is not True:
+                log("sorry, don't support skipping bombs on top of other bombs yet!")
                 return
             cls = level.player.pop_bomb()
             cls(bomb_position)
@@ -839,33 +888,17 @@ class Player(Entity):
             return
 
         new_position = self.position + delta
-        resolution = level.collision(new_position)
+
         stepping_onto_platform = None
-        # TODO okay this is a bit of a hack
-        if ((resolution == CollisionResolution.COLLISION)
-            and (level.tile_collision(new_position, Occupyability.BOMBS) == CollisionResolution.NO_COLLISION)
-            and (level.entity_collision(new_position) == CollisionResolution.NAVIGABLE)):
-            for e in level.entities[new_position]:
-                if (e.position == new_position) and isinstance(e, Bomb):
-                    stepping_onto_platform = e
-                    break
-            assert stepping_onto_platform
-            resolution = CollisionResolution.NO_COLLISION
-        if resolution == CollisionResolution.COLLISION:
-            log("can't occupy space, sorry.")
+
+        result = self.can_move_to(new_position)
+        if not result:
             return
+        elif result is not True:
+            stepping_onto_platform = result
 
-        # leap_delta = delta * 2
-        # leap_position = self.position + leap_delta
-        # if level.collision(new_position) >= CollisionResolution.COLLISION:
-        #     new_position = leap_position
-        #     tile = level.get(new_position)
-        #     if level.collision(new_position) >= CollisionResolution.COLLISION:
-        #         return
-
+        self.actor.z = 0
         log(f"animating player, from {self.position} by {delta} to {new_position}")
-        if self.standing_on_platform:
-            self.step_off()
         self.moving = PlayerAnimationState.MOVING_ABORTABLE
         self.new_position = new_position
         self.starting_position = self.actor.position
@@ -876,7 +909,8 @@ class Player(Entity):
             self._animation_finished,
             self._animation_halfway)
         if stepping_onto_platform:
-            self.step_on(stepping_onto_platform)
+            self.actor.z = 20
+            stepping_onto_platform.occupant = self.claim
         # print(f"{game.logics.counter:5} starting animation of player from {self.position} to {new_position}")
 
     def _start_moving(self):
@@ -885,21 +919,9 @@ class Player(Entity):
         self.on_key(self.held_key)
         self.start_moving_timer = None
 
-    def step_on(self, obj):
-        self.standing_on_platform = obj
-        obj.on_stepped_on(self)
-        self.actor.z = 20
-
-    def step_off(self):
-        if self.standing_on_platform:
-            self.standing_on_platform.on_stepped_on(None)
-            self.standing_on_platform = None
-            self.actor.z = 0
-
     def abort_movement(self):
         if self.moving != PlayerAnimationState.MOVING_ABORTABLE:
             return
-        self.step_off()
         self.moving = PlayerAnimationState.MOVING_COMMITTED
         starting_position = self.animator.position
         self.animator.animate(
@@ -937,7 +959,10 @@ class BlastPattern:
                 if c == "O":
                     # center
                     center = coordinate
-                    continue
+                    # fall through, allow the center
+                    # to be part of the blast pattern
+                    # (in case you have a bomb stacked
+                    # on top of another bomb)
                 if not c.isspace():
                     absolute_coordinates.append(coordinate)
         assert center and absolute_coordinates
@@ -966,18 +991,17 @@ XXOXX
 
 
 class Bomb(Entity):
-    collision_resolution = CollisionResolution.COLLISION
     blast_pattern = blast_pattern_1
 
     def __init__(self, position):
         super().__init__(position)
-
+        self.claim = Claim(self)
         self.actor = scene.spawn_bomb(self.position, self.sprite_name)
         self.floating = level.get(position).water
         if self.floating:
-            self.collision_resolution = CollisionResolution.NAVIGABLE
+            self.is_platform = True
         self.animator = None
-        self.occupant = None
+        self.waiting_halfway = False
 
         self.actor.z = 50
         tween(self.actor, 'accelerate', duration=0.2, on_finished=self.on_bomb_land, z=0)
@@ -988,11 +1012,16 @@ class Bomb(Entity):
             self.actor.play(f'{self.sprite_name}-float')
 
     def move_with_animation(self, position, logics):
-        log("animating bomb movement")
+        log(f"animating bomb movement to {position}")
         self.animator = Animator(game.logics)
         self.new_position = position
-        self.occupy(position)
-        # new_screen_position = map_to_screen(self.new_position)
+        current_occupant = level.tile_occupant[position]
+        if current_occupant:
+            log("bomb wants to move to new_position, but it's occupied.  start moving anyway.")
+            self.queue_for_tile(position)
+        else:
+            level.tile_occupant[position] = self.claim
+
         self.animator.animate(
             self.actor, 'position',
             position,
@@ -1009,11 +1038,31 @@ class Bomb(Entity):
         if not self.moving:
             return
 
-        self.move_with_animation(self.position + tile.current, water_speed_logics)
+        new_position = self.position + tile.current
+        self.move_with_animation(new_position, water_speed_logics)
+
+    def on_tile_available(self, entity, position):
+        assert self.queued_tile == position
+        assert level.tile_occupant[position] == None
+        level.tile_occupant[position] = self.claim
+        self.unqueue_for_tile()
+        if self.waiting_halfway:
+            # we can proceed!
+            self.animator.unpause()
+            self._animation_halfway()
 
     def _animation_halfway(self):
-        log("bomb halfway")
-        self.depart(self.position)
+        current_occupant = level.tile_occupant[self.new_position]
+        if current_occupant and current_occupant != self.claim:
+            # we need to wait!
+            log("bomb halfway... but we need to wait!")
+            assert self.queued_tile == self.new_position
+            self.waiting_halfway = True
+            self.animator.pause()
+            return
+
+        log("bomb halfway, proceeding.")
+        self.waiting_halfway = False
         self.position = self.new_position
         if self.occupant:
             self.occupant.on_platform_moved(self)
@@ -1022,9 +1071,6 @@ class Bomb(Entity):
         log("bomb finished moving")
         self.animate_if_on_moving_water()
 
-    def on_stepped_on(self, occupant):
-        self.occupant = occupant
-
     def _animation_tick(self):
         if self.animator and self.occupant:
             self.occupant.on_platform_animated(self.animator.position)
@@ -1032,33 +1078,32 @@ class Bomb(Entity):
     def detonate(self):
         if self.animator:
             self.animator.cancel()
-        if self.occupant:
-            self.occupant.on_platform_moved(None)
-            self.occupant = None
-        self.remove()
+        self.unqueue_for_tile()
         self.actor.scene.spawn_explosion(self.actor.position)
         self.actor.delete()
         Timer("bomb detonation", game.logics, exploding_bomb_interval, self.remove)
         for delta in self.blast_pattern.coordinates:
             coordinate = self.position + delta
-            for e in level.entities[coordinate]:
+            e = level.tile_occupant[coordinate]
+            if e:
                 e.on_blasted(self, self.position)
 
     def remove(self):
-        self.depart(self.position)
+        self.position = None
 
     def pushed_by_explosion(self, position):
         delta = self.position - position
-        self.move_with_animation(self.position + delta, explosion_push_logics)
-
+        if delta:
+            self.move_with_animation(self.position + delta, explosion_push_logics)
 
     def on_blasted(self, bomb, position):
+        super().on_blasted(bomb, position)
         self.pushed_by_explosion(position)
 
 
 class Dam(Entity):
-    collision_resolution = CollisionResolution.NAVIGABLE
     floating = True
+    is_platform = True
 
     def __init__(self, position):
         super().__init__(position)
@@ -1066,7 +1111,7 @@ class Dam(Entity):
 
     def on_blasted(self, bomb, position):
         self.actor.delete()
-        self.depart(self.position)
+        self.position = None
 
 
 class TimedBomb(Bomb):
@@ -1116,8 +1161,6 @@ class TimedBomb(Bomb):
 
 
 class Scenery(Entity):
-    collision_resolution = CollisionResolution.COLLISION
-
     def __init__(self, position, sprite):
         super().__init__(position)
         self.actor = scene.spawn_static(position, sprite)
