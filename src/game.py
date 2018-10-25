@@ -733,7 +733,7 @@ class Player(Entity):
             y=60
         )
         for n, s in enumerate(reversed(self.actor.attached)):
-            tween(s, tween='decelerate', duration=0.1, y=80 + 30 * n)
+            tween(s, tween='decelerate', duration=0.15, y=80 + 30 * n)
 
     def pop_bomb(self):
         """Drop a bomb."""
@@ -908,9 +908,10 @@ class Player(Entity):
             player_movement_logics,
             self._animation_finished,
             self._animation_halfway)
-        if stepping_onto_platform:
-            self.actor.z = 20
+        if (not self.standing_on) and stepping_onto_platform:
             stepping_onto_platform.occupant = self.claim
+        elif self.standing_on and (not stepping_onto_platform):
+            tween(self.actor, 'hop_up', duration=typematic_interval, z=20)
         # print(f"{game.logics.counter:5} starting animation of player from {self.position} to {new_position}")
 
     def _start_moving(self):
