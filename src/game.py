@@ -706,6 +706,7 @@ class Player(Entity):
 
         self.claim = Claim(self)
         self.actor = scene.spawn_player(position)
+        self.dead = False
 
         # what should be the player's initial orientation?
         # it doesn't really matter.  let's pick something cromulent.
@@ -733,6 +734,10 @@ class Player(Entity):
         self.queued_key = self.held_key = None
 
         self.bombs = []
+
+    def on_blasted(self, bomb, position):
+        self.actor.play('pc-smouldering')
+        self.dead = True
 
     def push_bomb(self, bomb):
         """Pick up a bomb."""
@@ -840,6 +845,9 @@ class Player(Entity):
 
 
     def on_key(self, k):
+        if self.dead:
+            # Can't do anything while dead
+            return
         log(f"on key {key_repr(k)}")
 
         if k == key.L:

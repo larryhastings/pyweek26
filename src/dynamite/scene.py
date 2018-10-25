@@ -225,6 +225,13 @@ class Player(Actor):
         'pc-down',
         'pc-left',
         'pc-right',
+        ImageSequence(
+            'pc-smouldering',
+            anchor_y=10,
+            frames=3,
+            delay=0.2,
+            loop=True,
+        ),
     ]
 
     def set_orientation(self, d):
