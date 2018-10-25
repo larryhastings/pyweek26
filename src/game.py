@@ -130,9 +130,15 @@ class MapWaterCurrentDown(MapMovingWater):
     current = Vec2D(0, 1)
 
 
-class MapBlockage(MapTile):
+class MapBlockage(MapMovingWater):
     current = Vec2D(0, 0)
     water = True
+
+    def __init__(self, current=None):
+        self.current = current.to_vec() if current else Vec2D(0, 0)
+
+    def spawn_item(self, pos):
+        return Dam(pos)
 
 
 class MapGrass(MapTile):
@@ -605,7 +611,7 @@ class Entity:
 
 
 
-class PlayerOrientation(Enum):
+class Orientation(Enum):
     RIGHT = 0
     UP = 1
     LEFT = 2
@@ -640,17 +646,17 @@ key_to_opposite = {
     }
 
 orientation_to_position_delta = {
-    PlayerOrientation.RIGHT: Vec2D(+1,  0),
-    PlayerOrientation.UP:    Vec2D( 0, -1),
-    PlayerOrientation.LEFT:  Vec2D(-1,  0),
-    PlayerOrientation.DOWN:  Vec2D( 0, +1),
+    Orientation.RIGHT: Vec2D(+1,  0),
+    Orientation.UP:    Vec2D( 0, -1),
+    Orientation.LEFT:  Vec2D(-1,  0),
+    Orientation.DOWN:  Vec2D( 0, +1),
     }
 
 key_to_orientation = {
-    key.RIGHT: PlayerOrientation.RIGHT,
-    key.UP:    PlayerOrientation.UP,
-    key.LEFT:  PlayerOrientation.LEFT,
-    key.DOWN:  PlayerOrientation.DOWN,
+    key.RIGHT: Orientation.RIGHT,
+    key.UP:    Orientation.UP,
+    key.LEFT:  Orientation.LEFT,
+    key.DOWN:  Orientation.DOWN,
     }
 
 
@@ -678,11 +684,11 @@ class Player(Entity):
         # |  R  |  L  |
         # +-----------+
         if position.y <= coords.TILES_H // 2:
-            self.orientation = PlayerOrientation.DOWN
+            self.orientation = Orientation.DOWN
         elif position.x <= coords.TILES_W // 2:
-            self.orientation = PlayerOrientation.RIGHT
+            self.orientation = Orientation.RIGHT
         else:
-            self.orientation = PlayerOrientation.LEFT
+            self.orientation = Orientation.LEFT
 
         self.actor.set_orientation(self.orientation)
         self.animator = Animator(game.logics)
@@ -1050,6 +1056,18 @@ class Bomb(Entity):
     def on_blasted(self, bomb, position):
         self.pushed_by_explosion(position)
 
+
+class Dam(Entity):
+    collision_resolution = CollisionResolution.NAVIGABLE
+    floating = True
+
+    def __init__(self, position):
+        super().__init__(position)
+        self.actor = scene.spawn_static(self.position, 'beaver-dam')
+
+    def on_blasted(self, bomb, position):
+        self.actor.delete()
+        self.depart(self.position)
 
 
 class TimedBomb(Bomb):
