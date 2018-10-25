@@ -453,8 +453,8 @@ class Animator:
         self.obj = obj
         self.property = property
         start = self.start = getattr(obj, property)
-
         self.end = end
+
         self.interval = interval
         self.callback = callback
         self.halfway_callback = halfway_callback
@@ -489,7 +489,6 @@ class Animator:
     @property
     def ratio(self):
         return self.timer.ratio
-
 
     def _halfway(self):
         self.halfway_timer = None
@@ -654,6 +653,12 @@ class Orientation(Enum):
         return orientation_to_position_delta[self]
 
 
+class MovementAction(Enum):
+    MOVE = 0
+    EMBARK = 1
+    DISEMBARK = 2
+
+
 class PlayerAnimationState(Enum):
     INVALID = 0
     STATIONARY = 1
@@ -768,8 +773,11 @@ class Player(Entity):
             self.position = platform.position
 
     def on_platform_animated(self, position):
+        if self.move_action is MovementAction.DISEMBARK:
+            return
         if ((self.moving != PlayerAnimationState.STATIONARY)
             and self.animator):
+            # FIXME: this updates the animator even if we're hopping off
             self.animator.end = position
         elif self.actor:
             self.actor.position = position
@@ -781,7 +789,6 @@ class Player(Entity):
     def _animation_finished(self):
         log("finished animating")
         self.moving = PlayerAnimationState.STATIONARY
-        self.screen_position = self.animator.position
         if self.queued_key:
             if self.held_key:
                 assert self.held_key == self.queued_key, f"{key_repr(self.held_key)} != {key_repr(self.queued_key)} !!!"
@@ -904,7 +911,6 @@ class Player(Entity):
         elif result is not True:
             stepping_onto_platform = result
 
-        self.actor.z = 0
         log(f"animating player, from {self.position} by {delta} to {new_position}")
         self.moving = PlayerAnimationState.MOVING_ABORTABLE
         self.new_position = new_position
@@ -917,15 +923,15 @@ class Player(Entity):
             self._animation_halfway)
         if (not self.standing_on) and stepping_onto_platform:
             stepping_onto_platform.occupant = self.claim
-            log('hopping up')
             tween(self.actor, 'hop_up', duration=typematic_interval, z=20)
+            self.move_action = MovementAction.EMBARK
         elif self.standing_on and (not stepping_onto_platform):
-            log('hopping down')
             tween(self.actor, 'hop_down', duration=typematic_interval, z=0)
-        # print(f"{game.logics.counter:5} starting animation of player from {self.position} to {new_position}")
+            self.move_action = MovementAction.DISEMBARK
+        else:
+            self.move_action = MovementAction.MOVE
 
     def _start_moving(self):
-        # print(f"[{game.logics.counter:05} start moving! {key_repr(self.held_key)}")
         assert self.held_key
         self.on_key(self.held_key)
         self.start_moving_timer = None
@@ -933,23 +939,15 @@ class Player(Entity):
     def abort_movement(self):
         if self.moving != PlayerAnimationState.MOVING_ABORTABLE:
             return
+        self.move_action = None
         self.moving = PlayerAnimationState.MOVING_COMMITTED
         starting_position = self.animator.position
+        tween(self.actor, duration=0.1, z=20 if self.standing_on else 0)
         self.animator.animate(
             self.actor, 'position',
             self.starting_position,
             player_movement_logics / 3,
             self._animation_finished)
-
-    # def render(self):
-    #     spr = pc_sprite[level.player.orientation]
-    #     if self.moving != PlayerAnimationState.STATIONARY:
-    #         position = self.animator.position
-    #     else:
-    #         position = self.screen_position
-    #     # print("drawing player at", position)
-    #     spr.position = position
-    #     spr.draw()
 
 
 class BlastPattern:
