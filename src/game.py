@@ -711,7 +711,7 @@ class Player(Entity):
             y=60
         )
         for n, s in enumerate(reversed(self.actor.attached)):
-            tween(s, tween='decelerate', duration=0.1, y=80 + 30 * n)
+            tween(s, tween='decelerate', duration=0.15, y=80 + 30 * n)
 
     def pop_bomb(self):
         """Drop a bomb."""
@@ -889,13 +889,13 @@ class Player(Entity):
     def step_on(self, obj):
         self.standing_on_platform = obj
         obj.on_stepped_on(self)
-        self.actor.z = 20
+        tween(self.actor, 'hop_up', duration=typematic_interval, z=20)
 
     def step_off(self):
         if self.standing_on_platform:
             self.standing_on_platform.on_stepped_on(None)
             self.standing_on_platform = None
-            self.actor.z = 0
+            tween(self.actor, 'hop_down', duration=typematic_interval, z=0)
 
     def abort_movement(self):
         if self.moving != PlayerAnimationState.MOVING_ABORTABLE:

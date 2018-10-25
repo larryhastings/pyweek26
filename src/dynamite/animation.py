@@ -112,6 +112,16 @@ def bounce_start_end(n):
     return _out_bounce_internal(p - 1., 1.) * .5 + .5
 
 
+@tweener
+def hop_up(n):
+    return 2 * n * (1.5 - n)
+
+
+@tweener
+def hop_down(n):
+    return 1 - hop_up(1 - n)
+
+
 def tween(n, start, end):
     return start + (end - start) * n
 
