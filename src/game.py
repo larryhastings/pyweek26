@@ -910,8 +910,11 @@ class Player(Entity):
             self._animation_halfway)
         if (not self.standing_on) and stepping_onto_platform:
             stepping_onto_platform.occupant = self.claim
-        elif self.standing_on and (not stepping_onto_platform):
+            log('hopping up')
             tween(self.actor, 'hop_up', duration=typematic_interval, z=20)
+        elif self.standing_on and (not stepping_onto_platform):
+            log('hopping down')
+            tween(self.actor, 'hop_down', duration=typematic_interval, z=0)
         # print(f"{game.logics.counter:5} starting animation of player from {self.position} to {new_position}")
 
     def _start_moving(self):
