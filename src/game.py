@@ -9,6 +9,7 @@ import random
 import sys
 import time
 import math
+import copy
 
 from pyglet import gl
 import pyglet.image
@@ -26,6 +27,13 @@ from dynamite.maploader import load_map
 from dynamite.vec2d import Vec2D
 from dynamite.animation import animate as tween
 
+
+if '--no-tween' in sys.argv:
+    def tween(obj, tween=None, duration=None, on_finished=None, **targets):
+        for k, v in targets.items():
+            setattr(obj, k, v)
+        if on_finished:
+            on_finished()
 
 
 # please ensure all the other intervals
@@ -94,11 +102,31 @@ key_repr = _key_repr.get
 OCCUPIABLE_BY_PLAYER = 1
 OCCUPIABLE_BY_BOMB   = 2
 
-class MapTile:
+
+class TileMeta(type):
+    def __add__(self, ano):
+        return self() + ano
+
+
+class MapTile(metaclass=TileMeta):
     water = False
     moving_water = False
     spawn_item = None
     navigability = OCCUPIABLE_BY_PLAYER | OCCUPIABLE_BY_BOMB
+    obj_factory = None
+
+    def spawn_item(self, pos=None):
+        if pos is None:
+            return None
+        if self.obj_factory:
+            return self.obj_factory(pos)
+
+    def __add__(self, ano):
+        if self.obj_factory:
+            raise TypeError(f"{self} already has an obj_factory")
+        o = copy.copy(self)
+        o.obj_factory = ano
+        return o
 
 
 class MapWater(MapTile):
@@ -106,14 +134,6 @@ class MapWater(MapTile):
     water = True
     navigability = OCCUPIABLE_BY_BOMB
 
-    def __init__(self, entity_class=None):
-        if entity_class:
-            assert issubclass(entity_class, Entity)
-            self.entity_class = entity_class
-            self.spawn_item = self._spawn_item
-
-    def _spawn_item(self, position):
-        return self.entity_class(position)
 
 class MapMovingWater(MapWater):
     moving_water = True
@@ -135,10 +155,16 @@ class MapWaterCurrentDown(MapMovingWater):
 class MapGrass(MapTile):
     navigability = OCCUPIABLE_BY_PLAYER | OCCUPIABLE_BY_BOMB
 
-class MapSpawnPoint(MapGrass):
-    @staticmethod
-    def spawn_item(pos):
-        return Player(pos)
+
+class LandSpawn(MapGrass):
+    def __init__(self, entity_type, *args, **kwargs):
+        self.type = entity_type
+        self.args = args
+        self.kwargs = kwargs
+
+    def spawn_item(self, pos):
+        return self.type(pos, *self.args, **self.kwargs)
+
 
 class MapScenery(MapGrass):
     def __init__(self, sprite):
@@ -146,13 +172,6 @@ class MapScenery(MapGrass):
 
     def spawn_item(self, pos):
         return Scenery(pos, self.sprite)
-
-class MapDispenser(MapGrass):
-    def __init__(self, type):
-        self.type = type
-
-    def spawn_item(self, pos):
-        return Dispenser(pos, self.type)
 
 
 class GameState(Enum):
@@ -453,8 +472,8 @@ class Animator:
         self.obj = obj
         self.property = property
         start = self.start = getattr(obj, property)
-
         self.end = end
+
         self.interval = interval
         self.callback = callback
         self.halfway_callback = halfway_callback
@@ -491,7 +510,6 @@ class Animator:
         if not self.timer:
             return 0
         return self.timer.ratio
-
 
     def _halfway(self):
         self.halfway_timer = None
@@ -563,6 +581,11 @@ class Entity:
 
     # are we a floating object?
     floating = False
+
+    @classmethod
+    def factory(cls, *args, **kwargs):
+        """Create a factory for entities of this type."""
+        return lambda position: cls(position, *args, **kwargs)
 
     def __init__(self, position):
         global entity_serial_numbers
@@ -756,6 +779,10 @@ class Entity:
     def on_stepped_on(self, occupier):
         self.occupant = occupier
 
+    def remove(self):
+        self.unqueue_for_tile()
+        self.position = None
+
 
 class Claim(Entity):
     """
@@ -793,6 +820,12 @@ class Orientation(Enum):
 
     def to_vec(self):
         return orientation_to_position_delta[self]
+
+
+class MovementAction(Enum):
+    MOVE = 0
+    EMBARK = 1
+    DISEMBARK = 2
 
 
 class PlayerAnimationState(Enum):
@@ -842,6 +875,7 @@ class Player(Entity):
 
         self.claim = Claim(self)
         self.actor = scene.spawn_player(position)
+        self.dead = False
 
         # what should be the player's initial orientation?
         # it doesn't really matter.  let's pick something cromulent.
@@ -869,6 +903,14 @@ class Player(Entity):
         self.queued_key = self.held_key = None
 
         self.bombs = []
+
+    def on_blasted(self, bomb, position):
+        if self.dead:
+            # FIXME: may have died by drowning, could play a
+            # drowning-smouldering animation
+            return
+        self.actor.play('pc-smouldering')
+        self.dead = True
 
     def push_bomb(self, bomb):
         """Pick up a bomb."""
@@ -900,6 +942,9 @@ class Player(Entity):
         # if platform stops existing, it calls us with None
         # but! it's an exploding bomb! so we're about to die anyway.
         if platform is None:
+            self.actor.play('pc-drowning')
+            self.actor.z = 0
+            self.dead = True
             return
 
         if self.moving == PlayerAnimationState.MOVING_ABORTABLE:
@@ -909,8 +954,11 @@ class Player(Entity):
             self.position = platform.position
 
     def on_platform_animated(self, position):
+        if self.move_action is MovementAction.DISEMBARK:
+            return
         if ((self.moving != PlayerAnimationState.STATIONARY)
             and self.animator):
+            # FIXME: this updates the animator even if we're hopping off
             self.animator.end = position
         elif self.actor:
             self.actor.position = position
@@ -922,7 +970,6 @@ class Player(Entity):
     def _animation_finished(self):
         log("finished animating")
         self.moving = PlayerAnimationState.STATIONARY
-        self.screen_position = self.animator.position
         if self.queued_key:
             if self.held_key:
                 assert self.held_key == self.queued_key, f"{key_repr(self.held_key)} != {key_repr(self.queued_key)} !!!"
@@ -977,6 +1024,9 @@ class Player(Entity):
 
 
     def on_key(self, k):
+        if self.dead:
+            # Can't do anything while dead
+            return
         log(f"on key {key_repr(k)}")
 
         if k == key.L:
@@ -1048,7 +1098,6 @@ class Player(Entity):
         elif result is not True:
             stepping_onto_platform = result
 
-        self.actor.z = 0
         log(f"animating player, from {self.position} by {delta} to {new_position}")
         self.moving = PlayerAnimationState.MOVING_ABORTABLE
         self.new_position = new_position
@@ -1061,12 +1110,15 @@ class Player(Entity):
             self._animation_halfway)
         if (not self.standing_on) and stepping_onto_platform:
             stepping_onto_platform.occupant = self.claim
-        elif self.standing_on and (not stepping_onto_platform):
             tween(self.actor, 'hop_up', duration=typematic_interval, z=20)
-        # print(f"{game.logics.counter:5} starting animation of player from {self.position} to {new_position}")
+            self.move_action = MovementAction.EMBARK
+        elif self.standing_on and (not stepping_onto_platform):
+            tween(self.actor, 'hop_down', duration=typematic_interval, z=0)
+            self.move_action = MovementAction.DISEMBARK
+        else:
+            self.move_action = MovementAction.MOVE
 
     def _start_moving(self):
-        # print(f"[{game.logics.counter:05} start moving! {key_repr(self.held_key)}")
         assert self.held_key
         self.on_key(self.held_key)
         self.start_moving_timer = None
@@ -1074,23 +1126,15 @@ class Player(Entity):
     def abort_movement(self):
         if self.moving != PlayerAnimationState.MOVING_ABORTABLE:
             return
+        self.move_action = None
         self.moving = PlayerAnimationState.MOVING_COMMITTED
         starting_position = self.animator.position
+        tween(self.actor, duration=0.1, z=20 if self.standing_on else 0)
         self.animator.animate(
             self.actor, 'position',
             self.starting_position,
             player_movement_logics / 3,
             self._animation_finished)
-
-    # def render(self):
-    #     spr = pc_sprite[level.player.orientation]
-    #     if self.moving != PlayerAnimationState.STATIONARY:
-    #         position = self.animator.position
-    #     else:
-    #         position = self.screen_position
-    #     # print("drawing player at", position)
-    #     spr.position = position
-    #     spr.draw()
 
 
 def enumerate_outside_in(iterable):
@@ -1420,7 +1464,8 @@ class Scenery(Entity):
         super().__init__(position)
         self.actor = scene.spawn_static(position, sprite)
 
-    def remove(self, dt):
+    def remove(self, dt=None):
+        super().remove()
         self.actor.delete()
 
 
@@ -1434,6 +1479,13 @@ class Dispenser(Scenery):
     def interact(self, player):
         player.push_bomb(self.bomb_type)
 
+
+class Bush(Scenery):
+    def __init__(self, position):
+        super().__init__(position, 'bush')
+
+    def on_blasted(self, bomb, position):
+        self.remove()
 
 
 # We have to start with the window invisible in order to be able to set
