@@ -31,3 +31,7 @@ C MapGrass + Dispenser.factory(TimedBomb)
 @ MapGrass + Bush
 1 MapWaterCurrentRight + TimedBomb
 2 MapWaterCurrentUp + TimedBomb
+
+:title: The testbed level
+:author: mauve
+:hint: Floating bombs can be stepped on!

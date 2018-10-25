@@ -27,6 +27,8 @@ from dynamite.maploader import load_map
 from dynamite.vec2d import Vec2D
 from dynamite.animation import animate as tween
 
+TITLE = "Dynamite Valley"
+
 
 if '--no-tween' in sys.argv:
     def tween(obj, tween=None, duration=None, on_finished=None, **targets):
@@ -1502,7 +1504,7 @@ class Bush(Scenery):
 window = pyglet.window.Window(
     coords.WIDTH,
     coords.HEIGHT,
-    caption="Dynamite Valley",
+    caption=TITLE,
     visible=False,
 )
 window.set_icon(
@@ -1535,6 +1537,12 @@ def start_level(filename):
 
     scene.level_renderer = LevelRenderer(level)
     scene.flow = FlowParticles(level)
+
+    title = map.metadata.get('title')
+    if title:
+        window.set_caption(f'{title} - {TITLE}')
+    else:
+        window.set_caption(TITLE)
 
 
 
