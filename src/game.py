@@ -736,6 +736,10 @@ class Player(Entity):
         self.bombs = []
 
     def on_blasted(self, bomb, position):
+        if self.dead:
+            # FIXME: may have died by drowning, could play a
+            # drowning-smouldering animation
+            return
         self.actor.play('pc-smouldering')
         self.dead = True
 
@@ -769,6 +773,9 @@ class Player(Entity):
         # if platform stops existing, it calls us with None
         # but! it's an exploding bomb! so we're about to die anyway.
         if platform is None:
+            self.actor.play('pc-drowning')
+            self.actor.z = 0
+            self.dead = True
             return
 
         if self.moving == PlayerAnimationState.MOVING_ABORTABLE:

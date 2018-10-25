@@ -232,6 +232,13 @@ class Player(Actor):
             delay=0.2,
             loop=True,
         ),
+        ImageSequence(
+            'pc-drowning',
+            anchor_y=16,
+            frames=2,
+            delay=0.3,
+            loop=True,
+        ),
     ]
 
     def set_orientation(self, d):
