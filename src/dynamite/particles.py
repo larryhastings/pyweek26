@@ -32,7 +32,7 @@ class FlowParticles:
 
         new_particles = []
         for p in self.particles:
-            p.age += dt
+            p.age += dt * 2
             if p.age > 4:
                 continue
 
