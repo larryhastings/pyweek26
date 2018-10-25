@@ -3,17 +3,19 @@ class Vec2D:
     __slots__ = ('x', 'y')
 
     def __init__(self, x, y=None):
+        if x is None:
+            raise ValueError("can't make Vec2D from None")
         if y is None:
             x, y = x
         self.x = x
         self.y = y
 
     def __add__(self, o):
-        x, y = o
+        x, y = Vec2D(o)
         return type(self)(self.x + x, self.y + y)
 
     def __sub__(self, o):
-        x, y = o
+        x, y = Vec2D(o)
         return type(self)(self.x - x, self.y - y)
 
     def __mul__(self, o):
@@ -58,3 +60,6 @@ class Vec2D:
 
     def __str__(self):
         return self.__repr__()
+
+    def manhattan_distance(self):
+        return abs(self.x) + abs(self.y)

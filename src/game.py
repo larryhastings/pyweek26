@@ -48,6 +48,7 @@ player_movement_delay_logics = typematic_start * logics_per_second
 
 water_speed_logics = 1 * logics_per_second
 explosion_push_logics = logics_per_second / 10
+fling_movement_logics = logics_per_second / 10
 
 srcdir = Path(__file__).parent
 pyglet.resource.path = [
@@ -105,6 +106,15 @@ class MapWater(MapTile):
     water = True
     navigability = OCCUPIABLE_BY_BOMB
 
+    def __init__(self, entity_class=None):
+        if entity_class:
+            assert issubclass(entity_class, Entity)
+            self.entity_class = entity_class
+            self.spawn_item = self._spawn_item
+
+    def _spawn_item(self, position):
+        return self.entity_class(position)
+
 class MapMovingWater(MapWater):
     moving_water = True
 
@@ -120,16 +130,6 @@ class MapWaterCurrentRight(MapMovingWater):
 class MapWaterCurrentDown(MapMovingWater):
     current = Vec2D(0, 1)
 
-
-class MapBlockage(MapMovingWater):
-    current = Vec2D(0, 0)
-    water = True
-
-    def __init__(self, current=None):
-        self.current = current.to_vec() if current else Vec2D(0, 0)
-
-    def spawn_item(self, pos):
-        return Dam(pos)
 
 
 class MapGrass(MapTile):
@@ -243,6 +243,9 @@ class Timer:
         self.on_tick = on_tick
         self.reset()
 
+    def __repr__(self):
+        return f"Timer({self.name}, {self.clock}, {self.interval}, callback={self.callback}, on_tick={self.on_tick})"
+
     def reset(self):
         self.elapsed = 0
         self.paused = False
@@ -284,13 +287,17 @@ class Timer:
 
 log_start_time = time.time()
 
+_logfile = open("dv.log.txt", "wt")
+
 def log(*a):
     outer = sys._getframe(1)
     fn = outer.f_code.co_name
     lineno = outer.f_lineno
     elapsed = time.time() - log_start_time
     s = " ".join(str(x) for x in a)
-    print(f"[{elapsed:07.3f}:{game.logics.counter:5}] {fn}()@{lineno}", s)
+    line = f"[{elapsed:07.3f}:{game.logics.counter:5}] {fn}()@{lineno} {s}"
+    print(line)
+    print(line, file=_logfile)
 
 if not __debug__:
     def log(*a):
@@ -481,6 +488,8 @@ class Animator:
 
     @property
     def ratio(self):
+        if not self.timer:
+            return 0
         return self.timer.ratio
 
 
@@ -500,9 +509,36 @@ class Animator:
 
     @property
     def position(self):
-        return self.start + ((self.end - self.start) * self.timer.ratio)
+        return self.start + ((self.end - self.start) * self.ratio)
+
+def walk_vec2d_back_to_zero(v):
+    yield v
+    delta_x = Vec2D(-1 if v.x > 0 else 1, 0)
+    delta_y = Vec2D(0, -1 if v.y > 0 else 1)
+    while v:
+        if abs(v.y) > abs(v.x):
+            v += delta_y
+        else:
+            v += delta_x
+        yield v
+
+if 0:
+    print(list(walk_vec2d_back_to_zero(Vec2D(-3, 0))))
+    print(list(walk_vec2d_back_to_zero(Vec2D(0, 3))))
+    print(list(walk_vec2d_back_to_zero(Vec2D(-5, 3))))
+    print(list(walk_vec2d_back_to_zero(Vec2D(-1, 1))))
+    print(list(walk_vec2d_back_to_zero(Vec2D(3, -5))))
+    sys.exit(0)
+
+class Fling:
+    def __init__(self, entity, original_delta, delta):
+        self.entity = entity
+        self.original_delta = original_delta
+        self.delta = delta
+        self.destination = self.entity.position + delta
 
 
+entity_serial_numbers = 0
 class Entity:
     # are we a platform that other things can go on?
     is_platform = False
@@ -522,16 +558,37 @@ class Entity:
     # a tile we're animating to but is currently occupied.
     queued_tile = None
 
+    # we've been flung across the map!
+    _fling = None
+
+    # are we a floating object?
+    floating = False
+
     def __init__(self, position):
+        global entity_serial_numbers
+        entity_serial_numbers += 1
+        self.serial_number = entity_serial_numbers
+        log(repr(self))
+
         self.position = position
 
+    def on_level_loaded(self):
+        pass
+
+    def __repr__(self):
+        return f'<{self.__class__.__name__} #{self.serial_number} {self.position}>'
+
     def queue_for_tile(self, coord):
-        assert self.queued_tile == None, f"self.queued_tile is {self.queued_tile}, should be None"
+        assert self.queued_tile == None, f"{self} queued_tile is {self.queued_tile}, should be None"
+        log(f"{self} queueing for {coord}")
         self.queued_tile = coord
         level.tile_queue[coord].append(self)
+        log(f"level.tile_queue[{coord}] is now {level.tile_queue[coord]}")
 
     def unqueue_for_tile(self):
         if self.queued_tile:
+            log(f"{self} unqueueing for {self.queued_tile}")
+            log(f"level.tile_queue[{self.queued_tile}] is currently {level.tile_queue[self.queued_tile]}")
             level.tile_queue[self.queued_tile].remove(self)
             self.queued_tile = None
 
@@ -560,11 +617,15 @@ class Entity:
 
         departed_tile = None
 
-        new_occupant = level.tile_occupant.get(position)
+        if position is not None:
+            new_occupant = level.tile_occupant.get(position)
+        else:
+            new_occupant = None
 
         if old_position is not None:
             old_occupant = level.tile_occupant[old_position]
             if old_occupant == self:
+                log(f"level.tile_occupant[{old_position}] = None")
                 level.tile_occupant[old_position] = None
                 departed_tile = old_position
             elif self.standing_on == old_occupant:
@@ -578,7 +639,15 @@ class Entity:
                 assert False, f"I don't understand how we used to be on {old_position}, occupant is {old_occupant} and self.standing_on is {self.standing_on}"
 
         if position is not None:
-            if new_occupant in (None, self.claim):
+            if new_occupant and (new_occupant == self.claim):
+                # moving to our claimed tile
+                new_occupant = None
+                # MILD HACK don't use descriptor to assign here
+                # the claim will think it's departing the tile
+                # and call on_tile_available() on the next queued guy
+                self.claim._position = None
+            if new_occupant == None:
+                log(f"level.tile_occupant[{position}] = {self}")
                 level.tile_occupant[position] = self
             elif new_occupant.is_platform:
                 assert new_occupant.occupant in (None, self, self.claim), f"we can't step on {new_occupant}, it's occupied by {new_occupant.occupant}"
@@ -592,21 +661,97 @@ class Entity:
             # that they can have our old tile
             tq = level.tile_queue[old_position]
             if tq:
-                e = tq.pop(0)
+                # DON'T remove e from tile_queue here
+                # let the entity do that itself!
+                e = tq[0]
                 assert e.position != old_position
+                log(f"{self} departing tile {departed_tile}.  hey, {e}! you can have it!")
                 e.on_tile_available(self, old_position)
-                new_occupant = level.tile_occupant[position]
-                assert (new_occupant == e) or (e.claim and new_occupant == e.claim)
+                new_occupant = level.tile_occupant[old_position]
+                assert (new_occupant == e) or (e.claim and new_occupant == e.claim), f"(new_occupant {new_occupant} == e {e}) or (e.claim {e.claim} and new_occupant {new_occupant} == e.claim {e.claim})"
+
+    def fling(self, delta):
+        """
+        This pawn has been flung across the map!
+        Move it rapidly (animated) by delta.
+
+        While being flung, we are _not_ occupying the tiles
+        we fly over.
+
+        When the fling is over, we occupy the destination tile.
+            * This means we "claim" it.
+            * If the fling is over more than one space (e.g. delta is (-2, 0)),
+              and we can't occupy the destination space, try the closer spaces
+              (e.g. try delta (-1, 0)).  if we can claim one of those, fling to that.
+            * if we can't claim any of the spaces, the fling fails.
+              * Bombs that attempt to be flung and fail explode.
+
+        Note that the rules are a little different for some flung objects.
+        If you fling a log, and it wants to land on a space currently occupied
+        by a dam, the fling fails.
+
+        **But!**
+
+        If you fling a bomb, and it wants to land on a space currently occupied
+        by a dam, and the dam itself is unoccupied, the fling succeeds!  Because
+        we want the bomb to skip along platforms like that.  So: we have to ask
+        the entity "is it okay for you to be flung onto this entity?".  That's
+        what fling_destination_is_okay() is for.  And when the fling is over,
+        and the bomb is landing on a platform where we want to re-fling, that's
+        what on_fling_completed() is for.
+        """
+        for v in walk_vec2d_back_to_zero(delta):
+            log(f"trying delta {v}")
+            if not v:
+                log(f"fling failed, we walked back to zero without finding any viable spot.")
+                return self.on_fling_failed(fling)
+            fling = Fling(self, delta, v)
+            occupant = level.tile_occupant[fling.destination]
+            if (not occupant) or (occupant is self.claim) or self.fling_destination_is_okay(fling, occupant):
+                break
+            log(f"tile wasn't okay, occupant is {occupant}")
+
+        # fling is okay!
+        log(f"{self} being flung to {fling.destination}!")
+        self._fling = fling
+        if self.animator:
+            self.animator.cancel()
+            self.animator.animate(
+                self.actor, 'position',
+                fling.destination,
+                fling_movement_logics,
+                self.on_fling_completed)
+            self.position = None
+        else:
+            # jump there immediately
+            assert not occupant, f"{self} wanted to be flung to {fling.destination} but we have no animator and the tile is occupied by {occupant}!"
+            self.on_fling_completed()
+
+    def fling_destination_is_okay(self, fling, occupant):
+        return False
+
+    def on_fling_failed(self, fling):
+        pass
+
+    def on_fling_completed(self):
+        assert self._fling
+        position = self._fling.destination
+        self._fling = None
+        self.position = position
 
     def interact(self, player):
         """Called when player interacts with this entity."""
         log(f'{player} interacted with {type(self)} at {self.position}')
 
     def on_blasted(self, bomb, position):
+        log(f"{self} has been blasted!")
         if self.occupant:
-            self.occupant.on_blasted(self, self.position)
-            self.occupant.on_platform_moved(None)
-            self.occupant = None
+            if self.position != None:
+                position = self.position
+            else:
+                position = self.actor.position
+            log(f"{self} occupant {self.occupant}, by transitivity, has also been blasted. (at position {position})")
+            self.occupant.on_blasted(self, position)
 
     def on_stepped_on(self, occupier):
         self.occupant = occupier
@@ -619,13 +764,16 @@ class Claim(Entity):
     old position to a new position,
     if the new position is unoccupied,
     the entity will put its claim on that coordinate:
-        level.tile_occupant[coord] = self.claim
+        self.claim.position = coord
+    (since Claim inherits from Entity, simply assigning
+    its coordinate makes it occupy the tile)
     """
     def __init__(self, owner):
         self.owner = owner
+        super().__init__(None)
 
     def __repr__(self):
-        return f'Claim({self.owner.__class__.__name__})'
+        return f'Claim({self.owner!r})'
 
     def on_platform_animated(self, position):
         pass
@@ -809,19 +957,22 @@ class Player(Entity):
         occupant = level.tile_occupant.get(new_position)
         if occupant and occupant != self.claim:
             if not occupant.is_platform:
-                log(f"can't {verb} space, it's occupied by {occupant} which isn't a platform.")
+                log(f"{self} can't {verb} space, it's occupied by {occupant} which isn't a platform.")
                 return False
             if occupant.occupant:
-                log(f"can't {verb} space, it's occupied by {occupant}, which *is* a platform, but already has {occupant.occupant} on it.")
+                log(f"{self} can't {verb} space, it's occupied by {occupant}, which *is* a platform, but already has {occupant.occupant} on it.")
                 return False
-            log(f"we can {verb} space!  current occupant is {occupant}, but it's a platform so it's cool.")
+            if self.floating:
+                log(f"{self} can't {verb} space, it's occupied by {occupant}, which *is* a platform, but we're floating.")
+                return False
+            log(f"{self} can {verb} space!  current occupant is {occupant}, but it's a platform so it's cool.")
             return occupant
 
         tile = level.get(new_position)
         if not (tile.navigability & navigability_mask):
-            log(f"can't {verb} space!  it's not navigable, and current occupant is {occupant}.")
+            log(f"{self} can't {verb} space!  it's not navigable, and current occupant is {occupant}.")
             return False
-        log(f"can {verb} space!  it's navigable, and current occupant is {occupant}.")
+        log(f"{self} can {verb} space!  it's navigable, and current occupant is {occupant}.")
         return True
 
 
@@ -942,8 +1093,30 @@ class Player(Entity):
     #     spr.draw()
 
 
+def enumerate_outside_in(iterable):
+    l = list(iterable)
+    offset = 0
+    while l:
+        o = l.pop(0)
+        yield offset, o
+        if not l:
+            break
+        o = l.pop(-1)
+        yield offset + len(l) + 1, o
+        offset += 1
+
+
 class BlastPattern:
     def __init__(self, strength, pattern):
+        """
+        The blast pattern is always outside-in.
+        That ensures that when we push bombs,
+        if there are two bombs in a row,
+        the further-away one is processed first,
+        which means it vacates its tile first,
+        which means that its tile is available
+        for the nearer one to move there.
+        """
         self.strength = strength
 
         lines = [line.rstrip() for line in pattern.split("\n")]
@@ -954,9 +1127,11 @@ class BlastPattern:
 
         center = None
         absolute_coordinates = []
-        for y, line in enumerate(lines):
-            for x, c in enumerate(line):
-                coordinate = Vec2D(x, y)
+        for y, line in enumerate_outside_in(lines):
+            stripped_line = line.lstrip()
+            x_offset = len(line) - len(stripped_line)
+            for x, c in enumerate_outside_in(stripped_line):
+                coordinate = Vec2D(x + x_offset, y)
                 if c == "O":
                     # center
                     center = coordinate
@@ -1008,20 +1183,39 @@ class Bomb(Entity):
         tween(self.actor, 'accelerate', duration=0.2, on_finished=self.on_bomb_land, z=0)
         self.animate_if_on_moving_water()
 
+    def on_level_loaded(self):
+        # when a bomb spawns on moving water,
+        # if the space it wants to animate to is open,
+        # it stakes its "claim" there.
+        # but maybe next we spawn something on that space!
+        # so:
+        #   if our claim has a position set,
+        #     and that position now has something
+        #     on it besides our claim:
+        #     withdraw our claim and queue for the tile.
+        claim_position = self.claim.position
+        if not claim_position:
+            return
+        occupant_at_claim = level.tile_occupant[claim_position]
+        if occupant_at_claim != self.claim:
+            log(f"{self} withdrawing claim after level loaded, {claim_position} occupied by {occupant_at_claim}")
+            self.claim._position = None
+            self.queue_for_tile(claim_position)
+
     def on_bomb_land(self):
         if self.floating:
             self.actor.play(f'{self.sprite_name}-float')
 
     def move_with_animation(self, position, logics):
-        log(f"animating bomb movement to {position}")
+        log(f"bomb {self} animating movement to {position}")
         self.animator = Animator(game.logics)
         self.new_position = position
         current_occupant = level.tile_occupant.get(position)
         if current_occupant:
-            log("bomb wants to move to new_position, but it's occupied.  start moving anyway.")
+            log(f"bomb {self} wants to move to new_position, but it's occupied.  start moving anyway.")
             self.queue_for_tile(position)
         else:
-            level.tile_occupant[position] = self.claim
+            self.claim.position = position
 
         self.animator.animate(
             self.actor, 'position',
@@ -1045,7 +1239,8 @@ class Bomb(Entity):
     def on_tile_available(self, entity, position):
         assert self.queued_tile == position
         assert level.tile_occupant[position] == None
-        level.tile_occupant[position] = self.claim
+        log(f"{self} was queued for {position}, but it's now available! hooray!")
+        self.claim.position = position
         self.unqueue_for_tile()
         if self.waiting_halfway:
             # we can proceed!
@@ -1056,20 +1251,20 @@ class Bomb(Entity):
         current_occupant = level.tile_occupant[self.new_position]
         if current_occupant and current_occupant != self.claim:
             # we need to wait!
-            log("bomb halfway... but we need to wait!")
-            assert self.queued_tile == self.new_position
+            log(f"bomb {self} halfway... but we need to wait! occupied by {current_occupant}.")
+            assert self.queued_tile == self.new_position, f"{self} queued_tile {self.queued_tile} != new_position {self.new_position} !!!"
             self.waiting_halfway = True
             self.animator.pause()
             return
 
-        log("bomb halfway, proceeding.")
+        log(f"bomb {self} halfway, proceeding.")
         self.waiting_halfway = False
         self.position = self.new_position
         if self.occupant:
             self.occupant.on_platform_moved(self)
 
     def _animation_finished(self):
-        log("bomb finished moving")
+        log(f"bomb {self} finished moving")
         self.animate_if_on_moving_water()
 
     def _animation_tick(self):
@@ -1077,29 +1272,87 @@ class Bomb(Entity):
             self.occupant.on_platform_animated(self.animator.position)
 
     def detonate(self):
+        if self._fling:
+            assert self.position is None
+            position = self.animator.position
+            position = Vec2D(math.floor(position.x), math.floor(position.y))
+        else:
+            position = self.position
+
+        log(f"{self} detonating at {position}!")
+
         if self.animator:
             self.animator.cancel()
         self.unqueue_for_tile()
         self.actor.scene.spawn_explosion(self.actor.position)
         self.actor.delete()
-        Timer("bomb detonation", game.logics, exploding_bomb_interval, self.remove)
+        # t = Timer(f"bomb {self} detonation", game.logics, exploding_bomb_interval, self.remove)
+        # log(f"WHAT THE HELL TIMER {t}")
         for delta in self.blast_pattern.coordinates:
-            coordinate = self.position + delta
+            coordinate = position + delta
             e = level.tile_occupant[coordinate]
             if e:
-                e.on_blasted(self, self.position)
+                e.on_blasted(self, position)
+        self.remove()
 
     def remove(self):
+        print(f"{self} bomb has exploded, removing self.")
         self.position = None
+        self.claim.position = None
 
     def pushed_by_explosion(self, position):
+        log(f"{self} (current position {self.position}) pushed by explosion from {position}! existing fling {self._fling}")
+        if self._fling:
+            return
+
         delta = self.position - position
         if delta:
-            self.move_with_animation(self.position + delta, explosion_push_logics)
+            # if queued for tile, unqueue
+            log(f"{self} explosion will fling us by {delta}")
+            self.unqueue_for_tile()
+            self.fling(delta)
+        else:
+            log(f"{self} explosion delta is {delta} so we're not flinging")
 
     def on_blasted(self, bomb, position):
         super().on_blasted(bomb, position)
+        if bomb == self:
+            return
         self.pushed_by_explosion(position)
+
+    def fling_destination_is_okay(self, fling, occupant):
+        if occupant.is_platform and not occupant.occupant:
+            log(f"{self}: can we fling to {fling.destination}? it has {occupant} but we can stand there, so yes!")
+            occupant.occupant = self
+            self.standing_on = occupant
+            return True
+
+    def on_fling_failed(self, fling):
+        # all this does is unset on_standing_on
+        # so it's called from on_fling_completed too,
+        # just to clean up.
+        standing_on = self.standing_on
+        if standing_on:
+            standing_on.occupant = None
+            standing_on = None
+
+    def on_fling_completed(self):
+        fling = self._fling
+        assert fling
+
+        standing_on = self.standing_on
+        self.on_fling_failed(fling) # cleanup!
+
+        if not standing_on:
+            log(f"{self} was flung, and has now landed at {fling.destination}.")
+            super().on_fling_completed()
+            self.animate_if_on_moving_water()
+        else:
+            # re-fling!
+            log(f"{self} was flung, but landed on {standing_on}, so we re-fling!")
+            self._fling = None
+            self.fling(fling.original_delta)
+
 
 
 class Dam(Entity):
@@ -1111,6 +1364,7 @@ class Dam(Entity):
         self.actor = scene.spawn_static(self.position, 'beaver-dam')
 
     def on_blasted(self, bomb, position):
+        super().on_blasted(bomb, position)
         self.actor.delete()
         self.position = None
 
@@ -1212,6 +1466,11 @@ def start_level(filename):
     level.set_map(map)
     level.name = filename
     level.mtime = map.mtime
+
+    # last-minute level fixups... it's complicated.
+    for entity in level.tile_occupant.values():
+        if entity:
+            entity.on_level_loaded()
 
     scene.level_renderer = LevelRenderer(level)
     scene.flow = FlowParticles(level)
