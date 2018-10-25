@@ -1,5 +1,6 @@
 from collections import namedtuple
 import os
+import re
 
 import pyglet.resource
 
@@ -7,11 +8,24 @@ from .vec2d import Vec2D
 from .coords import TILES_W, TILES_H
 
 
-Map = namedtuple('Map', 'width height tiles mtime')
+Map = namedtuple('Map', 'width height tiles mtime metadata')
 
 
 class MapFormatError(Exception):
     """The map data was in a bad format."""
+
+
+def _read_grid(lines):
+    map_lines = []
+    for lineno, line in lines:
+        if not line:
+            continue
+        if line == 'Legend':
+            break
+        map_lines.append(line)
+    else:
+        raise MapFormatError("The map data must contain a legend.")
+    return map_lines
 
 
 def load_map(filename, globals_=globals()):
@@ -27,19 +41,12 @@ def load_map(filename, globals_=globals()):
 
     lines = iter(enumerate(map_text.strip().splitlines(), start=1))
 
-    map_lines = []
-    for lineno, line in lines:
-        if not line:
-            continue
-        if line == 'Legend':
-            break
-        map_lines.append(line)
-    else:
-        raise MapFormatError("The map data must contain a legend.")
-
+    map_lines = _read_grid(lines)
 
     legend = {}
     for lineno, line in lines:
+        if not line:
+            break
         try:
             sym, expr = line.split(' ', 1)
         except ValueError:
@@ -50,6 +57,26 @@ def load_map(filename, globals_=globals()):
 
     if not legend:
         raise MapFormatError("No legend items were found.")
+
+    metadata = {}
+    lastk = None
+    for lineno, line in lines:
+        mo = re.match(r'^(?::(\w+):)? +(.*)', line)
+        if not mo:
+            raise MapFormatError(f"Unexpected data at line {lineno}")
+
+        k, v = mo.groups()
+        if not k:
+            if not lastk:
+                raise MapFormatError(f"Found {v} with no key at line {lineno}")
+            metadata[lastk] += f'\n{v}'
+        else:
+            if k in metadata:
+                raise MapFormatError(
+                    f"Duplicate metadata key {k} at line {lineno}"
+                )
+            metadata[k] = v
+            lastk = k
 
     # the map is currently map[y][x].
     # now rotate map so x is first instead of y.
@@ -89,4 +116,5 @@ def load_map(filename, globals_=globals()):
         height=map_height,
         tiles=new_map,
         mtime=mtime,
+        metadata=metadata,
     )
