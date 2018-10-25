@@ -545,7 +545,6 @@ class Entity:
     def occupy(self, coord):
         if coord not in self.occupied_tiles:
             self.occupied_tiles.add(coord)
-        if self not in level.entities[coord]:
             level.entities[coord].append(self)
 
     def on_occupied(self, entity, coord):
