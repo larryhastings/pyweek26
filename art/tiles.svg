@@ -99,8 +99,8 @@
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
      inkscape:zoom="1"
-     inkscape:cx="193.54167"
-     inkscape:cy="480.19738"
+     inkscape:cx="353.54167"
+     inkscape:cy="240.19738"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
      showgrid="true"
@@ -2173,7 +2173,10 @@
     </g>
     <g
        id="g6716"
-       transform="matrix(1,0,0,1.0690987,0,-68.602965)">
+       transform="matrix(1,0,0,1.0690987,0,-68.602965)"
+       inkscape:export-filename="/home/mauve/dev/pyweek26/src/images/log.png"
+       inkscape:export-xdpi="89.697418"
+       inkscape:export-ydpi="89.697418">
       <path
          inkscape:connector-curvature="0"
          id="path6676"

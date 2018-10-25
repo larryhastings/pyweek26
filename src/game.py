@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import collections
 import datetime
 from enum import Enum, IntEnum
@@ -7,28 +8,32 @@ from pathlib import Path
 import random
 import sys
 import time
+import math
 
 from pyglet import gl
 import pyglet.image
 import pyglet.window.key as key
 import pyglet.window.key
 import pyglet.resource
+from pyglet import clock
 
 from dynamite import coords
 from dynamite.coords import map_to_screen
 from dynamite.particles import FlowParticles
 from dynamite.level_renderer import LevelRenderer
-from dynamite.scene import Scene
+import dynamite.scene
 from dynamite.maploader import load_map
 from dynamite.vec2d import Vec2D
+from dynamite.animation import animate as tween
 
 
 
 # please ensure all the other intervals
 # are evenly divisible into this interval
 logics_per_second = 120
-logic_interval = 1/logics_per_second
+logic_interval = 1 / logics_per_second
 
+typematic_start = 1/10
 typematic_interval = 1/4
 typematic_delay = 1
 
@@ -39,9 +44,10 @@ callback_interval = logic_interval
 
 
 player_movement_logics = typematic_interval * logics_per_second
-player_movement_delay_logics = typematic_interval * logics_per_second
+player_movement_delay_logics = typematic_start * logics_per_second
 
 water_speed_logics = 1 * logics_per_second
+explosion_push_logics = logics_per_second / 10
 
 srcdir = Path(__file__).parent
 pyglet.resource.path = [
@@ -67,7 +73,8 @@ remapped_keys = {
     key.ENTER: key.ENTER,
     key.B: key.B,
     key.L: key.L,
-    }
+    key.E: key.E,
+}
 interesting_key = remapped_keys.get
 
 _key_repr = {
@@ -293,9 +300,16 @@ class Timer:
 log_start_time = time.time()
 
 def log(*a):
+    outer = sys._getframe(1)
+    fn = outer.f_code.co_name
+    lineno = outer.f_lineno
     elapsed = time.time() - log_start_time
     s = " ".join(str(x) for x in a)
-    print(f"[{elapsed:07.3f}:{game.logics.counter:5}]", s)
+    print(f"[{elapsed:07.3f}:{game.logics.counter:5}] {fn}()@{lineno}", s)
+
+if not __debug__:
+    def log(*a):
+        pass
 
 
 
@@ -394,7 +408,7 @@ class Game:
 
 
 class Level:
-    DEFAULT = MapWater
+    DEFAULT = MapTile
 
     def set_map(self, map_data):
         self.map = map_data.tiles
@@ -425,6 +439,11 @@ class Level:
         for y in range(self.height):
             for x in range(self.width):
                 yield Vec2D(x, y)
+
+    def top_entity(self, coords):
+        """Get the top entity at the given coordinates, or None if empty."""
+        es = self.entities[coords]
+        return es[0] if es else None
 
     def tile_collision(self, coord, occupyability=Occupyability.PLAYER):
         tile = self.get(coord)
@@ -526,7 +545,7 @@ class Entity:
     def occupy(self, coord):
         if coord not in self.occupied_tiles:
             self.occupied_tiles.add(coord)
-            assert self not in level.entities[coord]
+        if self not in level.entities[coord]:
             level.entities[coord].append(self)
 
     def on_occupied(self, entity, coord):
@@ -534,14 +553,20 @@ class Entity:
         entity is now on the tile at coord.
         entity.position == coord
         """
-        pass
+
+    def interact(self, player):
+        """Called when player interacts with this entity."""
+        log(f'{player} interacted with {type(self)} at {self.position}')
 
     def depart(self, coord):
         if coord in self.occupied_tiles:
-            self.occupied_tiles.remove(coord)
             entities = level.entities[coord]
-            assert self in entities
-            entities.remove(self)
+            try:
+                entities.remove(self)
+            except ValueError:
+                pass
+            if not entities:
+                self.occupied_tiles.remove(coord)
 
     def on_departed(self, entity, coord):
         """
@@ -575,6 +600,9 @@ class Entity:
         for e in level.entities[position]:
             e.on_occupied(self, position)
 
+    def on_blasted(self, bomb, position):
+        pass
+
 
 
 class PlayerOrientation(Enum):
@@ -585,6 +613,10 @@ class PlayerOrientation(Enum):
 
     def get_sprite(self):
         return ('right', 'up', 'left', 'down')[self.value]
+
+    def to_vec(self):
+        return orientation_to_position_delta[self]
+
 
 class PlayerAnimationState(Enum):
     INVALID = 0
@@ -626,6 +658,8 @@ key_to_orientation = {
 class Player(Entity):
     collision_resolution = CollisionResolution.INVALID
 
+    MAX_BOMBS = 2
+
     def __init__(self, position):
         super().__init__(position)
 
@@ -657,6 +691,34 @@ class Player(Entity):
         self.start_moving_timer = None
         self.queued_key = self.held_key = None
         self.standing_on_platform = None
+
+        self.bombs = []
+
+    def push_bomb(self, bomb):
+        """Pick up a bomb."""
+        if len(self.bombs) == self.MAX_BOMBS:
+            return
+        self.bombs.append(bomb)
+        self.actor.attach(
+            dynamite.scene.Bomb.sprites[bomb.sprite_name],
+            x=0,
+            y=60
+        )
+        for n, s in enumerate(reversed(self.actor.attached)):
+            tween(s, tween='decelerate', duration=0.1, y=80 + 30 * n)
+
+    def pop_bomb(self):
+        """Drop a bomb."""
+        if not self.bombs:
+            return None
+        self.actor.detach(self.actor.attached[-1])
+        for n, s in enumerate(reversed(self.actor.attached)):
+            tween(s, tween='accelerate', duration=0.2, y=80 + 30 * n)
+        return self.bombs.pop()
+
+    def facing_pos(self):
+        """Get the position the player is facing."""
+        return self.position + self.orientation.to_vec()
 
     def on_platform_moved(self, platform):
         # if platform stops existing, it calls us with None
@@ -720,18 +782,25 @@ class Player(Entity):
         if k == key.L:
             # log!
             return
+        if k == key.E:
+            target_obj = level.top_entity(level.player.facing_pos())
+            if not target_obj:
+                return
+            target_obj.interact(level.player)
         if k == key.B:
             if self.moving != PlayerAnimationState.STATIONARY:
                 log("can't drop, player is moving")
                 return
             # drop bomb
-            delta = orientation_to_position_delta[level.player.orientation]
-            bomb_position = level.player.position + delta
+            if not level.player.bombs:
+                return
+            bomb_position = level.player.facing_pos()
             resolution = level.collision(bomb_position, Occupyability.BOMBS)
             if resolution != CollisionResolution.NO_COLLISION:
                 log(f"can't drop, tile collision is {resolution!r}")
                 return
-            TimedBomb(bomb_position)
+            cls = level.player.pop_bomb()
+            cls(bomb_position)
             return
 
         delta = key_to_movement_delta.get(k)
@@ -791,8 +860,7 @@ class Player(Entity):
 
         log(f"animating player, from {self.position} by {delta} to {new_position}")
         if self.standing_on_platform:
-            self.standing_on_platform.on_stepped_on(None)
-            self.standing_on_platform = None
+            self.step_off()
         self.moving = PlayerAnimationState.MOVING_ABORTABLE
         self.new_position = new_position
         self.starting_position = self.actor.position
@@ -803,8 +871,7 @@ class Player(Entity):
             self._animation_finished,
             self._animation_halfway)
         if stepping_onto_platform:
-            self.standing_on_platform = stepping_onto_platform
-            self.standing_on_platform.on_stepped_on(self)
+            self.step_on(stepping_onto_platform)
         # print(f"{game.logics.counter:5} starting animation of player from {self.position} to {new_position}")
 
     def _start_moving(self):
@@ -813,11 +880,21 @@ class Player(Entity):
         self.on_key(self.held_key)
         self.start_moving_timer = None
 
+    def step_on(self, obj):
+        self.standing_on_platform = obj
+        obj.on_stepped_on(self)
+        self.actor.z = 20
+
+    def step_off(self):
+        if self.standing_on_platform:
+            self.standing_on_platform.on_stepped_on(None)
+            self.standing_on_platform = None
+            self.actor.z = 0
+
     def abort_movement(self):
         if self.moving != PlayerAnimationState.MOVING_ABORTABLE:
             return
-        if self.standing_on_platform:
-            self.standing_on_platform.on_stepped_on(None)
+        self.step_off()
         self.moving = PlayerAnimationState.MOVING_COMMITTED
         starting_position = self.animator.position
         self.animator.animate(
@@ -837,20 +914,87 @@ class Player(Entity):
     #     spr.draw()
 
 
+class BlastPattern:
+    def __init__(self, strength, pattern):
+        self.strength = strength
+
+        lines = [line.rstrip() for line in pattern.split("\n")]
+        while lines and not lines[0]:
+            lines.pop(0)
+        while lines and not lines[-1]:
+            lines.pop()
+
+        center = None
+        absolute_coordinates = []
+        for y, line in enumerate(lines):
+            for x, c in enumerate(line):
+                coordinate = Vec2D(x, y)
+                if c == "O":
+                    # center
+                    center = coordinate
+                    continue
+                if not c.isspace():
+                    absolute_coordinates.append(coordinate)
+        assert center and absolute_coordinates
+        self.coordinates = []
+        for coordinate in absolute_coordinates:
+            self.coordinates.append(coordinate - center)
+
+    def __repr__(self):
+        return f"BlastPattern({self.strength}, {self.coordinates})"
+
+blast_pattern_1 = BlastPattern(2,
+"""
+ X
+XOX
+ X
+""")
+
+blast_pattern_2 = BlastPattern(3,
+"""
+  X
+ XXX
+XXOXX
+ XXX
+  X
+""")
+
 
 class Bomb(Entity):
     collision_resolution = CollisionResolution.COLLISION
+    blast_pattern = blast_pattern_1
 
     def __init__(self, position):
         super().__init__(position)
 
         self.actor = scene.spawn_bomb(self.position, self.sprite_name)
-        if level.get(position).water:
+        self.floating = level.get(position).water
+        if self.floating:
             self.collision_resolution = CollisionResolution.NAVIGABLE
-            self.actor.play(f'{self.sprite_name}-float')
         self.animator = None
         self.occupant = None
+
+        self.actor.z = 50
+        tween(self.actor, 'accelerate', duration=0.2, on_finished=self.on_bomb_land, z=0)
         self.animate_if_on_moving_water()
+
+    def on_bomb_land(self):
+        if self.floating:
+            self.actor.play(f'{self.sprite_name}-float')
+
+    def move_with_animation(self, position, logics):
+        log("animating bomb movement")
+        self.animator = Animator(game.logics)
+        self.new_position = position
+        self.occupy(position)
+        # new_screen_position = map_to_screen(self.new_position)
+        self.animator.animate(
+            self.actor, 'position',
+            position,
+            logics,
+            self._animation_finished,
+            self._animation_halfway,
+            self._animation_tick)
 
     def animate_if_on_moving_water(self):
         tile = level.get(self.position)
@@ -860,18 +1004,7 @@ class Bomb(Entity):
         if not self.moving:
             return
 
-        log("animating bomb movement")
-        self.animator = Animator(game.logics)
-        self.new_position = self.position + tile.current
-        self.occupy(self.new_position)
-        # new_screen_position = map_to_screen(self.new_position)
-        self.animator.animate(
-            self.actor, 'position',
-            self.new_position,
-            water_speed_logics,
-            self._animation_finished,
-            self._animation_halfway,
-            self._animation_tick)
+        self.move_with_animation(self.position + tile.current, water_speed_logics)
 
     def _animation_halfway(self):
         log("bomb halfway")
@@ -901,9 +1034,22 @@ class Bomb(Entity):
         self.actor.scene.spawn_explosion(self.actor.position)
         self.actor.delete()
         Timer("bomb detonation", game.logics, exploding_bomb_interval, self.remove)
+        for delta in self.blast_pattern.coordinates:
+            coordinate = self.position + delta
+            for e in level.entities[coordinate]:
+                e.on_blasted(self, self.position)
 
     def remove(self):
         self.depart(self.position)
+
+    def pushed_by_explosion(self, position):
+        delta = self.position - position
+        self.move_with_animation(self.position + delta, explosion_push_logics)
+
+
+    def on_blasted(self, bomb, position):
+        self.pushed_by_explosion(position)
+
 
 
 class TimedBomb(Bomb):
@@ -912,14 +1058,34 @@ class TimedBomb(Bomb):
     def __init__(self, position):
         super().__init__(position)
 
-        if level.get(position).water:
-            self.actor.play('timed-bomb-float')
-
         # TODO convert these to our own timers
         # otherwise they'll still fire when we pause the game
         Timer("bomb toggle red", game.logics, timed_bomb_interval * 0.5, self.toggle_red)
         Timer("bomb detonate", game.logics, timed_bomb_interval, self.detonate)
         self.start_time = game.logics.counter
+
+        sx, sy = (20, 27) if self.floating else (18, 35)
+        self.spark = self.actor.attach(
+            dynamite.scene.Bomb.sprites['spark'],
+            x=sx,
+            y=sy,
+        )
+        self.spark.scale = 0.5
+        self.t = 0
+        clock.schedule(self.update_spark)
+
+    def detonate(self):
+        self.spark = None
+        clock.unschedule(self.update_spark)
+        super().detonate()
+
+    def update_spark(self, dt):
+        if not self.spark:
+            return
+        self.t += dt
+
+        self.spark.scale = 0.5 + 0.1 * math.sin(self.t * 10)
+        self.spark.rotation += 1.5 * 360 * dt
 
     def toggle_red(self):
         elapsed = game.logics.counter - self.start_time
@@ -950,6 +1116,9 @@ class Dispenser(Scenery):
         super().__init__(position, f'dispenser-{bomb_type.sprite_name}')
         self.bomb_type = bomb_type
 
+    def interact(self, player):
+        player.push_bomb(self.bomb_type)
+
 
 
 # We have to start with the window invisible in order to be able to set
@@ -967,7 +1136,7 @@ window.set_visible(True)
 
 
 game = Game()
-scene = Scene()
+scene = dynamite.scene.Scene()
 level = None
 
 def start_level(filename):
@@ -981,9 +1150,18 @@ def start_level(filename):
 
     level.set_map(map)
     level.name = filename
+    level.mtime = map.mtime
 
     scene.level_renderer = LevelRenderer(level)
     scene.flow = FlowParticles(level)
+
+
+
+def check_update_level(dt):
+    """Check whether the level data has been changed."""
+    d = Path(__file__).parent / 'levels'
+    if (d / level.name).stat().st_mtime != level.mtime:
+        reload_level()
 
 
 def reload_level():
@@ -1016,6 +1194,7 @@ def on_key_press(k, modifiers):
         return
     return game.on_key_press(k, modifiers)
 
+
 @window.event
 def on_key_release(k, modifiers):
     return game.on_key_release(k, modifiers)
@@ -1043,9 +1222,7 @@ def timer_callback(dt):
 
 start_level('level1.txt')
 
-
-# pyglet.clock.schedule_interval(timer_callback, callback_interval)
-pyglet.clock.schedule(timer_callback)
+pyglet.clock.schedule_interval(timer_callback, callback_interval)
 pyglet.app.run()
 
 # dump_log()

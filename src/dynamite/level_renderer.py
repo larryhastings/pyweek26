@@ -1,8 +1,10 @@
+from itertools import product
+
 import pyglet.resource
 import pyglet.image
 import pyglet.graphics
 
-from .coords import map_to_screen
+from .coords import map_to_screen, TILE_W, TILE_H
 from .vec2d import Vec2D
 
 
@@ -18,20 +20,20 @@ class LevelRenderer:
         ).get_texture_sequence()
 
     tilemap = {
-        0b0000: (0, 3),
-        0b0001: (2, 2),
-        0b0010: (2, 0),
-        0b0011: (2, 1),
-        0b0100: (0, 0),
-        0b0110: (1, 0),
-        0b0111: (3, 1),
-        0b1000: (0, 2),
-        0b1001: (1, 2),
-        0b1011: (3, 0),
-        0b1100: (0, 1),
-        0b1101: (4, 0),
-        0b1110: (4, 1),
-        0b1111: (1, 1),
+        'wwww': (0, 3),
+        'wwwg': (2, 2),
+        'wwgw': (2, 0),
+        'wwgg': (2, 1),
+        'wgww': (0, 0),
+        'wggw': (1, 0),
+        'wggg': (3, 1),
+        'gwww': (0, 2),
+        'gwwg': (1, 2),
+        'gwgg': (3, 0),
+        'ggww': (0, 1),
+        'ggwg': (4, 0),
+        'gggw': (4, 1),
+        'gggg': (1, 1),
     }
 
     def __init__(self, level):
@@ -43,14 +45,26 @@ class LevelRenderer:
         batch = pyglet.graphics.Batch()
         sprites = []
         def q(x, y):
+            if x < 0:
+                x = 0
+            elif x >= self.level.width:
+                x = self.level.width - 1
+            if y < 0:
+                y = 0
+            elif y >= self.level.height:
+                y = self.level.height - 1
             t = self.level.get(Vec2D(x, y))
-            return not t.water
-        for x, y in self.level.coords():
+            return 'w' if t.water else 'g'
+        coords = product(
+            range(-1, self.level.width + 1),
+            range(-1, self.level.height + 1)
+        )
+        for x, y in coords:
             bitv = (
-                q(x, y) |
-                q(x, y - 1) << 1 |
-                q(x + 1, y - 1) << 2 |
-                q(x + 1, y) << 3
+                q(x + 1, y) +
+                q(x + 1, y - 1) +
+                q(x, y - 1) +
+                q(x, y)
             )
             screenx, screeny = map_to_screen(Vec2D(x, y))
             tx, ty = self.tilemap[bitv]

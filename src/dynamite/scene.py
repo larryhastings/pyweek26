@@ -1,4 +1,7 @@
 import operator
+from itertools import chain
+
+from pyglet import gl
 import pyglet.resource
 import pyglet.graphics
 import pyglet.sprite
@@ -38,22 +41,43 @@ class Scene:
 
 
 
-# Indicate an animation
-class ImageSequence:
+class AnchoredImg:
+    """An image that can be loaded later."""
+    def __init__(self, name, anchor_x='center', anchor_y='center'):
+        self.name = name
+        self.anchor_x = anchor_x
+        self.anchor_y = anchor_y
+
+    def _set_anchor(self, img):
+        if self.anchor_x == 'center':
+            img.anchor_x = img.width // 2
+        else:
+            img.anchor_x = self.anchor_x
+        if self.anchor_y == 'center':
+            img.anchor_y = img.height // 2
+        else:
+            img.anchor_y = self.anchor_y
+
+    def load(self):
+        img = pyglet.resource.image(f'{self.name}.png')
+        self._set_anchor(img)
+        return img
+
+
+class ImageSequence(AnchoredImg):
+    """An animation that can be loaded later."""
     def __init__(
             self,
             name,
             frames,
             delay=0.1,
-            anchor_x=0,
-            anchor_y=0,
+            anchor_x='center',
+            anchor_y='center',
             loop=False):
-        self.name = name
+        super().__init__(name, anchor_x, anchor_y)
         self.frames = frames
         self.delay = delay
         self.loop = loop
-        self.anchor_x = anchor_x
-        self.anchor_y = anchor_y
 
     def load(self):
         img = pyglet.resource.image(f'{self.name}.png')
@@ -65,14 +89,7 @@ class ImageSequence:
 
         images = list(grid)
         for img in images:
-            if self.anchor_x == 'center':
-                img.anchor_x = img.width // 2
-            else:
-                img.anchor_x = self.anchor_x
-            if self.anchor_y == 'center':
-                img.anchor_y = img.height // 2
-            else:
-                img.anchor_y = self.anchor_y
+            self._set_anchor(img)
 
         return pyglet.image.Animation.from_image_sequence(
             images,
@@ -81,14 +98,43 @@ class ImageSequence:
         )
 
 
+class ActorGroup(pyglet.graphics.OrderedGroup):
+    def __hash__(self):
+        return id(self)
+
+    def __eq__(self, ano):
+        return self is ano
+
+
+class AttachmentGroup(pyglet.graphics.Group):
+    def __init__(self, obj, parent):
+        super().__init__(parent)
+        self.obj = obj
+
+    def set_state(self):
+        gl.glMatrixMode(gl.GL_MODELVIEW)
+        gl.glPushMatrix()
+        x, y = self.obj.position
+        gl.glTranslatef(x, y, 0)
+
+    def unset_state(self):
+        gl.glMatrixMode(gl.GL_MODELVIEW)
+        gl.glPopMatrix()
+
+    def __lt__(self, ano):
+        return False
+
+
 class Actor:
+    DEFAULT_Z = 0
+
     @classmethod
     def load(cls):
         if hasattr(cls, 'sprites'):
             return
         cls.sprites = {}
         for spr in cls.SPRITES:
-            if isinstance(spr, ImageSequence):
+            if isinstance(spr, AnchoredImg):
                 s = cls.sprites[spr.name] = spr.load()
             else:
                 s = cls.sprites[spr] = pyglet.resource.image(f'{spr}.png')
@@ -97,18 +143,27 @@ class Actor:
 
     def __init__(self, scene, position, sprite_name='default'):
         """Do not use this constructor - use methods of Scene."""
+        self._pos = position
+        self._z = self.DEFAULT_Z
+
+        self.group = ActorGroup(self.z_order())
+
         x, y = map_to_screen(position)
         self.sprite = pyglet.sprite.Sprite(
             self.sprites[sprite_name],
             x, y,
-            group=pyglet.graphics.OrderedGroup(-y),
+            group=pyglet.graphics.OrderedGroup(0, self.group),
             batch=scene.batch,
         )
+        self.attach_group = AttachmentGroup(self.sprite, self.group)
         self.anim = sprite_name
 
-        self._pos = position
         self.scene = scene
         self.scene.objects.add(self)
+        self.attached = []
+
+    def z_order(self):
+        return (self._pos[1], self._z)
 
     def play(self, name):
         self.sprite.image = self.sprites[name]
@@ -124,16 +179,47 @@ class Actor:
         self._pos = v
         if not self.scene:
             return
-        self.sprite.position = x, y
-        self.sprite.group = pyglet.graphics.OrderedGroup(-y)
+        self.sprite.position = x, y + self._z
+        self.group.order = self.z_order()
+
+    @property
+    def z(self):
+        return self._z
+
+    @z.setter
+    def z(self, v):
+        self._z = v
+        self.position = self._pos  # trigger sprite update
 
     def delete(self):
+        if not self.scene:
+            return
         self.scene.objects.remove(self)
         self.sprite.delete()
+        for spr in self.attached:
+            spr.delete()
         self.scene = None
+
+    def attach(self, img, x, y):
+        """Attach another sprite on top of this."""
+        sprite = pyglet.sprite.Sprite(
+            img,
+            x=x,
+            y=y,
+            group=self.attach_group,
+            batch=self.sprite.batch,
+        )
+        self.attached.append(sprite)
+        return sprite
+
+    def detach(self, sprite):
+        self.attached.remove(sprite)
+        sprite.delete()
+
 
 
 class Player(Actor):
+    DEFAULT_Z = 1
     SPRITES = [
         'pc-up',
         'pc-down',
@@ -166,7 +252,8 @@ class Bomb(Actor):
             anchor_x='center',
             anchor_y=14,
             loop=True,
-        )
+        ),
+        AnchoredImg('spark'),
     ]
     red = False
 
