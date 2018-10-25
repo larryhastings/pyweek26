@@ -625,7 +625,7 @@ class Claim(Entity):
         self.owner = owner
 
     def __repr__(self):
-        return f'Claim({owner.__class__.__name__})'
+        return f'Claim({self.owner.__class__.__name__})'
 
     def on_platform_animated(self, position):
         pass
@@ -806,7 +806,7 @@ class Player(Entity):
             self.held_key = None
 
     def can_move_to(self, new_position, navigability_mask=OCCUPIABLE_BY_PLAYER, verb="move to"):
-        occupant = level.tile_occupant[new_position]
+        occupant = level.tile_occupant.get(new_position)
         if occupant and occupant != self.claim:
             if not occupant.is_platform:
                 log(f"can't {verb} space, it's occupied by {occupant} which isn't a platform.")
@@ -1016,7 +1016,7 @@ class Bomb(Entity):
         log(f"animating bomb movement to {position}")
         self.animator = Animator(game.logics)
         self.new_position = position
-        current_occupant = level.tile_occupant[position]
+        current_occupant = level.tile_occupant.get(position)
         if current_occupant:
             log("bomb wants to move to new_position, but it's occupied.  start moving anyway.")
             self.queue_for_tile(position)
