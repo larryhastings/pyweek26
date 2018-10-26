@@ -1,0 +1,23 @@
+>>>>>>>>>>>>
+>>>>>>D>>>>>
+>>>>>>^>>>>>
+>>>TC####TtT
+ttBv##^..D..
+...v#.^.....
+...v..^.....
+D<<<..^.....
+.....#^.....
+b...##^#S...
+....C###....
+....#####t..
+....####....
+
+Legend
+D MapWater + Dam
+L MapWaterCurrentLeft + Log
+X MapWaterCurrentUp + Dam
+C MapGrass + Dispenser.factory(TimedBomb)
+
+:title: Moving
+:author: mauve
+:hint: Floating bombs can be stepped on!
