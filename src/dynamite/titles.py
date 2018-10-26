@@ -212,3 +212,62 @@ class IntroScreen(Screen):
     def on_mouse_press(self, *args):
         # TODO: only when you click the bomb
         self.end()
+
+
+
+class BackStoryScreen(Screen):
+    SPRITES = [
+        AnchoredImg('speech1', anchor_x=444, anchor_y=0),
+        AnchoredImg('speech2', anchor_x=0, anchor_y=0),
+        AnchoredImg('speech3', anchor_x=444, anchor_y=0),
+    ]
+
+    BGCOLOR = 0xaa / 255, 0x99 / 255, 0x82 / 255
+
+    def start(self):
+        self.bubble = 0
+        self.bubbles = [
+            pyglet.sprite.Sprite(
+                self.sprites['speech1'],
+                x=self.window.width - 70,
+                y=self.window.height - 260,
+                batch=self.batch,
+            ),
+            pyglet.sprite.Sprite(
+                self.sprites['speech2'],
+                x=50,
+                y=self.window.height - 410,
+                batch=self.batch,
+            ),
+            pyglet.sprite.Sprite(
+                self.sprites['speech3'],
+                x=self.window.width - 20,
+                y=self.window.height - 540,
+                batch=self.batch,
+            ),
+        ]
+        for b in self.bubbles:
+            b.visible = False
+
+        self.clock.schedule_once(self.next_bubble, 0.5)
+
+    def next_bubble(self, dt):
+        try:
+            bubble = self.bubbles[self.bubble]
+        except IndexError:
+            return self.end()
+        self.bubble += 1
+
+        bubble.visible = True
+        bubble.scale = 0.2
+        self.clock.animate(
+            bubble,
+            'bounce_end',
+            duration=0.5,
+            scale=1,
+            on_finished=lambda: self.clock.schedule_once(self.next_bubble, 3)
+        )
+
+    def on_key_press(self, *_):
+        self.clock.unschedule(self.next_bubble)
+        self.next_bubble(0)

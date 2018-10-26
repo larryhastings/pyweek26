@@ -26,7 +26,7 @@ import dynamite.scene
 from dynamite.maploader import load_map
 from dynamite.vec2d import Vec2D
 from dynamite.animation import animate as tween
-from dynamite.titles import TitleScreen, Screen, IntroScreen
+from dynamite.titles import TitleScreen, Screen, IntroScreen, BackStoryScreen
 
 TITLE = "Dynamite Valley"
 
@@ -1674,7 +1674,10 @@ class GameScreen(Screen):
         scene.draw()
 
 
-TitleScreen(window, on_finished=lambda: start_level('level1.txt'))
+TitleScreen(
+    window,
+    on_finished=lambda: BackStoryScreen(window, on_finished=lambda: start_level('level1.txt'))
+)
 
 try:
     pyglet.app.run()
