@@ -26,6 +26,7 @@ import dynamite.scene
 from dynamite.maploader import load_map
 from dynamite.vec2d import Vec2D
 from dynamite.animation import animate as tween
+from dynamite.titles import TitleScreen, Screen
 
 TITLE = "Dynamite Valley"
 
@@ -66,6 +67,7 @@ pyglet.resource.path = [
     'levels',
 ]
 pyglet.resource.reindex()
+pyglet.resource.add_font('edo.ttf')
 
 LevelRenderer.load()
 FlowParticles.load()
@@ -1631,49 +1633,47 @@ def screenshot_path():
             return str(path)
 
 
-@window.event
-def on_key_press(k, modifiers):
-    if k == key.F5:
-        reload_level()
-        return
-
-    if k == key.F12:
-        gl.glPixelTransferf(gl.GL_ALPHA_BIAS, 1.0)  # don't transfer alpha channel
-        image = pyglet.image.ColorBufferImage(0, 0, window.width, window.height)
-        image.save(screenshot_path())
-        gl.glPixelTransferf(gl.GL_ALPHA_BIAS, 0.0)  # restore alpha channel transfer
-        return
-    return game.on_key_press(k, modifiers)
-
-
-@window.event
-def on_key_release(k, modifiers):
-    return game.on_key_release(k, modifiers)
-
-
-
-@window.event
-def on_draw():
-    gl.glClearColor(66 / 255, 125 / 255, 193 / 255, 0)
-    window.clear()
-
-    scene.flow.draw()
-    scene.level_renderer.draw()
-
-    if not (level and level.player):
-        return
-
-    scene.draw()
-
-
 def timer_callback(dt):
     game.timer(dt)
     scene.flow.update(dt)
 
 
-start_level('level1.txt')
+class GameScreen(Screen):
+    def start(self):
+        start_level('level1.txt')
+        pyglet.clock.schedule_interval(timer_callback, callback_interval)
 
-pyglet.clock.schedule_interval(timer_callback, callback_interval)
+    def on_key_press(self, k, modifiers):
+        if k == key.F5:
+            reload_level()
+            return
+
+        if k == key.F12:
+            gl.glPixelTransferf(gl.GL_ALPHA_BIAS, 1.0)  # don't transfer alpha channel
+            image = pyglet.image.ColorBufferImage(0, 0, window.width, window.height)
+            image.save(screenshot_path())
+            gl.glPixelTransferf(gl.GL_ALPHA_BIAS, 0.0)  # restore alpha channel transfer
+            return
+        return game.on_key_press(k, modifiers)
+
+    def on_key_release(self, k, modifiers):
+        return game.on_key_release(k, modifiers)
+
+    def on_draw(self):
+        gl.glClearColor(66 / 255, 125 / 255, 193 / 255, 0)
+        window.clear()
+
+        scene.flow.draw()
+        scene.level_renderer.draw()
+
+        if not (level and level.player):
+            return
+
+        scene.draw()
+
+
+TitleScreen(window, next_screen=GameScreen)
+
 try:
     pyglet.app.run()
 except AssertionError as e:
