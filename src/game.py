@@ -1374,6 +1374,28 @@ class FloatingPlatform(Entity):
         else:
             log(f"{self} explosion delta is {delta} so we're not flinging")
 
+    def on_fling_completed(self):
+        fling = self._fling
+        assert fling
+
+        # is our destination (what we flung to)
+        # a platform?  our claim would be standing on something.
+        standing_on = self.claim.standing_on
+        log(f"{self} bomb fling completed.  did we land on a platform? {standing_on} {self.standing_on}")
+        self.on_fling_failed(fling) # cleanup!
+
+        super().on_fling_completed()
+        log(f"just checking! {self} .fling is {self._fling}")
+        self.floating = level.get(self.position).water
+        if not standing_on:
+            log(f"{self} was flung, and has now landed at {fling.destination}.")
+            self.animate_if_on_moving_water()
+        else:
+            # re-fling!
+            log(f"{self} was flung, but landed on {standing_on}, so we re-fling!")
+            self.fling(fling.original_delta)
+
+
 
 class Log(FloatingPlatform):
 
@@ -1389,7 +1411,7 @@ class Log(FloatingPlatform):
 class Bomb(FloatingPlatform):
     blast_pattern = blast_pattern_1
     detonated = False
-    can_be_pushed_from_water_to_land = True
+    # can_be_pushed_from_water_to_land = True
 
     def __init__(self, position):
         super().__init__(position)
@@ -1485,27 +1507,6 @@ class Bomb(FloatingPlatform):
         if standing_on:
             standing_on.occupant = None
             standing_on = None
-
-    def on_fling_completed(self):
-        fling = self._fling
-        assert fling
-
-        # is our destination (what we flung to)
-        # a platform?  our claim would be standing on something.
-        standing_on = self.claim.standing_on
-        log(f"{self} bomb fling completed.  did we land on a platform? {standing_on} {self.standing_on}")
-        self.on_fling_failed(fling) # cleanup!
-
-        super().on_fling_completed()
-        log(f"just checking! {self} .fling is {self._fling}")
-        self.floating = level.get(self.position).water
-        if not standing_on:
-            log(f"{self} was flung, and has now landed at {fling.destination}.")
-            self.animate_if_on_moving_water()
-        else:
-            # re-fling!
-            log(f"{self} was flung, but landed on {standing_on}, so we re-fling!")
-            self.fling(fling.original_delta)
 
 
 
