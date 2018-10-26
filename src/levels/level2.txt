@@ -20,6 +20,6 @@ C MapGrass + Dispenser.factory(TimedBomb)
 r MapWater + Scenery.factory('bullrush')
 R MapGrass + Scenery.factory('rock')
 
-:title: Moving
+:title: Moving Water
 :author: mauve
 :hint: Floating bombs can be stepped on!

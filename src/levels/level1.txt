@@ -21,4 +21,4 @@ C MapGrass + Dispenser.factory(TimedBomb)
 
 :title: The testbed level
 :author: mauve
-:hint: Floating bombs can be stepped on!
+:hint: Try out all the things!
