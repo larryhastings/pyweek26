@@ -1411,7 +1411,7 @@ class Log(FloatingPlatform):
 class Bomb(FloatingPlatform):
     blast_pattern = blast_pattern_1
     detonated = False
-    # can_be_pushed_from_water_to_land = True
+    can_be_pushed_from_water_to_land = True
 
     def __init__(self, position):
         super().__init__(position)
