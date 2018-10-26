@@ -76,14 +76,33 @@ class Screen:
 class TitleScreen(Screen):
     SPRITES = [
         AnchoredImg('dynamite-valley'),
+        'valley-art',
     ]
 
     def start(self):
+        valley = self.sprites['valley-art']
+        valley.anchor_x = valley.anchor_y = 0
+        self.bg = pyglet.sprite.Sprite(
+            valley,
+            group=pyglet.graphics.OrderedGroup(-1),
+            batch=self.batch,
+        )
+        self.clock.animate(
+            self.bg,
+            'decelerate',
+            duration=15,
+            y=self.window.height - valley.height,
+            on_finished=self.show_label
+        )
+        self.clock.schedule_once(self.show_title, 12)
+
+    def show_title(self, dt):
         self.title = pyglet.sprite.Sprite(
             self.sprites['dynamite-valley'],
             x=self.window.width // 2,
-            y=self.window.height // 2 + 50,
+            y=self.window.height - 200,
             batch=self.batch,
+            group=pyglet.graphics.OrderedGroup(1),
         )
         self.title.scale = 0.1
         self.clock.animate(
@@ -98,13 +117,14 @@ class TitleScreen(Screen):
         self.label = Label(
             "Press any key to begin",
             x=self.window.width // 2,
-            y=200,
+            y=100,
             font_name=BODY_FONT,
             font_size=20,
             anchor_x='center',
             anchor_y='center',
             color=(255, 255, 255, 0),
             batch=self.batch,
+            group=pyglet.graphics.OrderedGroup(1),
         )
         self.clock.schedule(self.update_label)
 
@@ -197,7 +217,7 @@ class IntroScreen(Screen):
             batch=self.batch,
         )
         self.author_label = Label(
-            'Creator:' + self.map.metadata.get('author', 'Larry & Dan'),
+            'Created by ' + self.map.metadata.get('author', 'Larry & Dan'),
             x=20,
             y=20,
             font_name=BODY_FONT,
@@ -222,20 +242,20 @@ class BackStoryScreen(Screen):
         AnchoredImg('speech3', anchor_x=444, anchor_y=0),
     ]
 
-    BGCOLOR = 0xaa / 255, 0x99 / 255, 0x82 / 255
+    BGCOLOR = 0, 0, 0
 
     def start(self):
         self.bubble = 0
         self.bubbles = [
             pyglet.sprite.Sprite(
                 self.sprites['speech1'],
-                x=self.window.width - 70,
+                x=self.window.width - 50,
                 y=self.window.height - 260,
                 batch=self.batch,
             ),
             pyglet.sprite.Sprite(
                 self.sprites['speech2'],
-                x=50,
+                x=30,
                 y=self.window.height - 410,
                 batch=self.batch,
             ),
