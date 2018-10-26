@@ -44,7 +44,7 @@ if '--no-tween' in sys.argv:
 logics_per_second = 120
 logic_interval = 1 / logics_per_second
 
-typematic_start = 1/10
+typematic_start = 0.15
 typematic_interval = 1/4
 typematic_delay = 1
 
