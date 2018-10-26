@@ -15,21 +15,9 @@ B^#....d....
 .##.........
 
 Legend
-. MapWater
-# MapGrass
-^ MapWaterCurrentUp
-v MapWaterCurrentDown
-> MapWaterCurrentRight
-< MapWaterCurrentLeft
-T MapGrass + Scenery.factory('fir-tree')
-B MapGrass+ Scenery.factory('beaver')
-b MapWater + Scenery.factory('beaver-right')
-d MapWater + Scenery.factory('beaver-left')
 L MapWaterCurrentLeft + Log
-S MapGrass + Player
 X MapWaterCurrentUp + Dam
 C MapGrass + Dispenser.factory(TimedBomb)
-@ MapGrass + Bush
 1 MapWaterCurrentRight + TimedBomb
 2 MapWaterCurrentUp + TimedBomb
 

@@ -1618,10 +1618,12 @@ def start_level(filename):
 
 
 
+
 def check_update_level(dt):
     """Check whether the level data has been changed."""
     d = Path(__file__).parent / 'levels'
-    if (d / level.name).stat().st_mtime != level.mtime:
+    if (((d / level.name).stat().st_mtime != level.mtime)
+        or ((d / "legend.txt").stat().st_mtime != level.legend_mtime)):
         reload_level()
 
 

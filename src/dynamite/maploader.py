@@ -8,7 +8,7 @@ from .vec2d import Vec2D
 from .coords import TILES_W, TILES_H
 
 
-Map = namedtuple('Map', 'name width height tiles mtime metadata')
+Map = namedtuple('Map', 'name width height tiles mtime legend_mtime metadata')
 
 
 class MapFormatError(Exception):
@@ -28,6 +28,26 @@ def _read_grid(lines):
     return map_lines
 
 
+def load_legend(filename, lines):
+    legend = {}
+    print(f"lines is {lines}")
+    for lineno, line in lines:
+        line = line.strip()
+        if not line:
+            break
+        try:
+            sym, expr = line.split(' ', 1)
+        except ValueError:
+            raise MapFormatError(
+                f'Invalid legend line {line!r} at {filename} line {lineno}.'
+            ) from None
+        legend[sym] = expr
+
+    if not legend:
+        raise MapFormatError(f"No legend items were found in {filename}.")
+
+    return legend
+
 def load_map(filename, globals_=globals()):
     """Load a map from a text file.
 
@@ -35,28 +55,24 @@ def load_map(filename, globals_=globals()):
     and a legend at the bottom.
 
     """
-    with pyglet.resource.file(filename, 'r') as f:
+
+    def enumerated_text(s):
+        return iter(enumerate(s.strip().splitlines(), start=1))
+
+    legend_filename = "legend.txt"
+    with pyglet.resource.file(legend_filename, 'rt') as f:
+        legend_mtime = os.fstat(f.fileno()).st_mtime
+        legend = load_legend(legend_filename, enumerated_text(f.read()))
+
+    with pyglet.resource.file(filename, 'rt') as f:
         mtime = os.fstat(f.fileno()).st_mtime
         map_text = f.read()
 
-    lines = iter(enumerate(map_text.strip().splitlines(), start=1))
-
+    lines = enumerated_text(map_text)
     map_lines = _read_grid(lines)
 
-    legend = {}
-    for lineno, line in lines:
-        if not line:
-            break
-        try:
-            sym, expr = line.split(' ', 1)
-        except ValueError:
-            raise MapFormatError(
-                f'Invalid legend line {line!r} at {lineno}'
-            ) from None
-        legend[sym] = expr
-
-    if not legend:
-        raise MapFormatError("No legend items were found.")
+    additional_legend = load_legend(filename, lines)
+    legend.update(additional_legend)
 
     metadata = {}
     lastk = None
@@ -117,5 +133,6 @@ def load_map(filename, globals_=globals()):
         height=map_height,
         tiles=new_map,
         mtime=mtime,
+        legend_mtime=legend_mtime,
         metadata=metadata,
     )
