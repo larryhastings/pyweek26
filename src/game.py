@@ -664,8 +664,8 @@ class Entity:
                 # we're being flung.  our old position was a mystery for the ages.
                 # hopefully our final destination will be less so.
                 pass
-            else:
-                assert False, f"I don't understand how we used to be on {old_position}, occupant is {old_occupant} and self.standing_on is {self.standing_on}"
+            # else:
+            #     assert False, f"{self}: I don't understand how we used to be on {old_position}, occupant is {old_occupant} and self.standing_on is {self.standing_on}"
 
         if position is not None:
             if new_occupant and (new_occupant == self.claim):
@@ -680,10 +680,11 @@ class Entity:
                 level.tile_occupant[position] = self
             elif new_occupant.is_platform:
                 assert new_occupant.occupant in (None, self, self.claim), f"we can't step on {new_occupant}, it's occupied by {new_occupant.occupant}"
+                log(f"{self} stepping onto existing tile occupant {new_occupant}")
                 self.standing_on = new_occupant
                 new_occupant.on_stepped_on(self)
-            else:
-                assert False, f"I don't understand how we can move to {position}"
+            # else:
+            #     assert False, f"{self}: I don't understand how we can move to {position}"
 
         if departed_tile:
             # tell the next entity in the queue
@@ -744,6 +745,7 @@ class Entity:
         log(f"{self} being flung to {fling.destination}!")
         self._fling = fling
         if self.animator:
+            self.claim.position = fling.destination
             self.animator.cancel()
             self.animator.animate(
                 self.actor, 'position',
@@ -814,6 +816,10 @@ class Claim(Entity):
 
     def on_platform_moved(self, position):
         pass
+
+    def on_blasted(self, bomb, position):
+        # pass it on to our owner
+        self.owner.on_blasted(bomb, position)
 
 
 class Orientation(Enum):
@@ -1019,7 +1025,7 @@ class Player(Entity):
             if self.floating:
                 log(f"{self} can't {verb} space, it's occupied by {occupant}, which *is* a platform, but we're floating.")
                 return False
-            log(f"{self} can {verb} space!  current occupant is {occupant}, but it's a platform so it's cool.")
+            log(f"{self} can {verb} space!  current occupant is {occupant}, but it's an unoccupied platform so it's cool.")
             return occupant
 
         tile = level.get(new_position)
@@ -1224,6 +1230,7 @@ XXOXX
 
 class Bomb(Entity):
     blast_pattern = blast_pattern_1
+    detonated = False
 
     def __init__(self, position):
         super().__init__(position)
@@ -1281,6 +1288,8 @@ class Bomb(Entity):
             self._animation_tick)
 
     def animate_if_on_moving_water(self):
+        if self.standing_on:
+            return
         tile = level.get(self.position)
         self.moving = tile.moving_water
         log("bomb placed at", self.position, "tile is", tile, "moving?", self.moving)
@@ -1327,6 +1336,9 @@ class Bomb(Entity):
             self.occupant.on_platform_animated(self.animator.position)
 
     def detonate(self):
+        if self.detonated:
+            return
+        self.detonated = True
         if self._fling:
             assert self.position is None
             position = self.animator.position
@@ -1348,6 +1360,8 @@ class Bomb(Entity):
             e = level.tile_occupant[coordinate]
             if e:
                 e.on_blasted(self, position)
+        if self.occupant:
+            self.occupant.on_blasted(self, position)
         self.remove()
 
     def remove(self):
@@ -1373,13 +1387,18 @@ class Bomb(Entity):
         super().on_blasted(bomb, position)
         if bomb == self:
             return
+        if self._fling:
+            # can't be double-flung! if we're already flinging somewhere
+            # we just detonate.
+            self.detonate()
+            return
         self.pushed_by_explosion(position)
 
     def fling_destination_is_okay(self, fling, occupant):
         if occupant.is_platform and not occupant.occupant:
             log(f"{self}: can we fling to {fling.destination}? it has {occupant} but we can stand there, so yes!")
-            occupant.occupant = self
-            self.standing_on = occupant
+            occupant.occupant = self.claim
+            self.claim.standing_on = occupant
             return True
 
     def on_fling_failed(self, fling):
@@ -1395,7 +1414,10 @@ class Bomb(Entity):
         fling = self._fling
         assert fling
 
-        standing_on = self.standing_on
+        # is our destination (what we flung to)
+        # a platform?  our claim would be standing on something.
+        standing_on = self.claim.standing_on
+        log(f"{self} bomb fling completed.  did we land on a platform? {standing_on} {self.standing_on}")
         self.on_fling_failed(fling) # cleanup!
 
         super().on_fling_completed()
@@ -1612,6 +1634,10 @@ def timer_callback(dt):
 start_level('level1.txt')
 
 pyglet.clock.schedule_interval(timer_callback, callback_interval)
-pyglet.app.run()
+try:
+    pyglet.app.run()
+except AssertionError as e:
+    log(f"\n{e}")
+    raise e
 
 # dump_log()
