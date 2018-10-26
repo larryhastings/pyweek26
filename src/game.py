@@ -755,6 +755,7 @@ class Entity:
         log(f"{self} being flung to {fling.destination}!")
         self._fling = fling
         if self.animator:
+            log(f"{self} being animated to new position.")
             self.claim.position = fling.destination
             self.animator.cancel()
             self.animator.animate(
@@ -765,6 +766,7 @@ class Entity:
             self.position = None
         else:
             # jump there immediately
+            log(f"{self} has no animator, so we'll just jump to the flung spot.")
             assert not occupant, f"{self} wanted to be flung to {fling.destination} but we have no animator and the tile is occupied by {occupant}!"
             self.on_fling_completed()
 
@@ -1440,10 +1442,12 @@ class Bomb(FloatingPlatform):
         self.claim.position = None
 
     def on_blasted(self, bomb, position):
-        super().on_blasted(bomb, position)
+        # explicitly pass over FloatingPlatform.on_blasted
+        super(FloatingPlatform, self).on_blasted(bomb, position)
         if bomb == self:
             return
         if self._fling:
+            log(f"{self} can't be double-flung!  we have to detonate.")
             # can't be double-flung! if we're already flinging somewhere
             # we just detonate.
             self.detonate()
@@ -1477,6 +1481,7 @@ class Bomb(FloatingPlatform):
         self.on_fling_failed(fling) # cleanup!
 
         super().on_fling_completed()
+        log(f"just checking! {self} .fling is {self._fling}")
         self.floating = level.get(self.position).water
         if not standing_on:
             log(f"{self} was flung, and has now landed at {fling.destination}.")
