@@ -1696,10 +1696,15 @@ class GameScreen(Screen):
         scene.draw()
 
 
-TitleScreen(
-    window,
-    on_finished=lambda: BackStoryScreen(window, on_finished=lambda: start_level('level1.txt'))
-)
+if len(sys.argv) > 1:
+    fname = sys.argv[-1]
+    if not fname.startswith('-'):
+        start_level(fname)
+else:
+    TitleScreen(
+        window,
+        on_finished=lambda: BackStoryScreen(window, on_finished=lambda: start_level('level1.txt'))
+    )
 
 try:
     pyglet.app.run()
