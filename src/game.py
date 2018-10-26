@@ -85,6 +85,7 @@ remapped_keys = {
     key.B: key.B,
     key.L: key.L,
     key.E: key.E,
+    key.SPACE: key.SPACE,
 }
 interesting_key = remapped_keys.get
 
@@ -98,6 +99,7 @@ _key_repr = {
 
     key.B: "B",
     key.L: "L",
+    key.SPACE: "Space",
     }
 key_repr = _key_repr.get
 
@@ -231,6 +233,9 @@ class Clock:
 
     # dt is fractional seconds e.g. 0.001357
     def advance(self, dt):
+        if self.paused:
+            return
+
         self.accumulator += dt
         self.elapsed += dt
         callbacks = 0
@@ -252,6 +257,7 @@ class Clock:
         self.counter = 0
         self.elapsed = self.accumulator = 0.0
         self.next = self.delay or self.interval
+        self.paused = False
         self.timers = []
 
 
@@ -1041,6 +1047,11 @@ class Player(Entity):
             # Can't do anything while dead
             return
         log(f"on key {key_repr(k)}")
+
+        if k == key.SPACE:
+            # pause / unpause
+            game.logics.paused = not game.logics.paused
+            return
 
         if k == key.L:
             # log!  that's all L does.
