@@ -50,7 +50,7 @@ class LevelRenderer:
             elif x >= self.level.width:
                 x = self.level.width - 1
             if y < 0:
-                y = 0
+                return 'w'
             elif y >= self.level.height:
                 y = self.level.height - 1
             t = self.level.get(Vec2D(x, y))

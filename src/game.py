@@ -114,6 +114,14 @@ class TileMeta(type):
         return self() + ano
 
 
+class MapOOB:
+    water = False
+    moving_water = False
+    spawn_item = None
+    obj_factory = None
+    navigability = 0
+
+
 class MapTile(metaclass=TileMeta):
     water = False
     moving_water = False
@@ -429,7 +437,7 @@ class Game:
 
 
 class Level:
-    DEFAULT = MapTile
+    DEFAULT = MapOOB
 
     def set_map(self, map_data):
         self.map = map_data.tiles
@@ -1650,6 +1658,11 @@ def timer_callback(dt):
 
 class GameScreen(Screen):
     def start(self):
+        self.wall = pyglet.sprite.Sprite(
+            pyglet.resource.image('canyon-wall.png'),
+            x=0,
+            y=self.window.height - 100
+        )
         pyglet.clock.schedule_interval(timer_callback, callback_interval)
 
     def on_key_press(self, k, modifiers):
@@ -1673,6 +1686,8 @@ class GameScreen(Screen):
         window.clear()
 
         scene.flow.draw()
+        self.wall.draw()
+
         scene.level_renderer.draw()
 
         if not (level and level.player):
