@@ -1,0 +1,25 @@
+>>>>>>>>>>>>
+>>>>>>D>>>>>
+>>>>>>^>>>>>
+>>>TC####TtT
+ttBv##^..D..
+...v#.^.....
+...v..^.....
+D<<<..^.....
+.....#^.....
+b...##^#S...
+....C###....
+...r#####t..
+.r.r#R##....
+
+Legend
+D MapWater + Dam
+L MapWaterCurrentLeft + Log
+X MapWaterCurrentUp + Dam
+C MapGrass + Dispenser.factory(TimedBomb)
+r MapWater + Scenery.factory('bullrush')
+R MapGrass + Scenery.factory('rock')
+
+:title: Moving Water
+:author: mauve
+:hint: Floating bombs can be stepped on!
