@@ -8,7 +8,7 @@ from .vec2d import Vec2D
 from .coords import TILES_W, TILES_H
 
 
-Map = namedtuple('Map', 'width height tiles mtime metadata')
+Map = namedtuple('Map', 'name width height tiles mtime metadata')
 
 
 class MapFormatError(Exception):
@@ -112,6 +112,7 @@ def load_map(filename, globals_=globals()):
             new_map[Vec2D(x, y)] = eval(exp, globals_)
 
     return Map(
+        name=filename.replace('.txt', ''),
         width=map_width,
         height=map_height,
         tiles=new_map,

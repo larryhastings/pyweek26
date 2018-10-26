@@ -16,14 +16,15 @@ BODY_FONT = 'Edo'
 
 class Screen:
     SPRITES = []
+    BGCOLOR = 66 / 255, 125 / 255, 193 / 255
 
-    def __init__(self, window, next_screen=None):
+    def __init__(self, window, on_finished=None):
         handlers = {}
         for k in dir(self):
             if k.startswith('on_'):
                 handlers[k] = getattr(self, k)
         self.window = window
-        self.next_screen = next_screen
+        self.on_finished = on_finished
         self.load()
         self.batch = pyglet.graphics.Batch()
         self.t = 0
@@ -45,8 +46,8 @@ class Screen:
     def end(self):
         self.window.pop_handlers()
         clock.unschedule(self._tick)
-        if self.next_screen:
-            self.next_screen(self.window)
+        if self.on_finished:
+            self.on_finished()
 
     def load(self):
         self.imgs = {}
@@ -60,7 +61,7 @@ class Screen:
                 s.anchor_y = 10
 
     def on_draw(self):
-        gl.glClearColor(66 / 255, 125 / 255, 193 / 255, 0)
+        gl.glClearColor(*self.BGCOLOR, 0)
         self.window.clear()
         self.batch.draw()
         return EVENT_HANDLED
@@ -115,4 +116,99 @@ class TitleScreen(Screen):
         )
 
     def on_key_press(self, k, modifiers):
+        self.end()
+
+
+class IntroScreen(Screen):
+    SPRITES = [
+        AnchoredImg('dynamite-valley'),
+        AnchoredImg('big-go-bomb', anchor_y=0),
+    ]
+
+    BGCOLOR = 0xaa / 255, 0x99 / 255, 0x82 / 255
+
+    def __init__(self, window, map, on_finished=None):
+        self.map = map
+        super().__init__(window, on_finished=on_finished)
+
+    def start(self):
+        self.title = pyglet.sprite.Sprite(
+            self.sprites['dynamite-valley'],
+            x=self.window.width // 2 - 100,
+            y=self.window.height - 80,
+            batch=self.batch,
+        )
+        self.bomb = pyglet.sprite.Sprite(
+            self.sprites['big-go-bomb'],
+            x=self.window.width - 130,
+            y=self.window.height + 100,
+            batch=self.batch,
+        )
+        self.title.scale_x = 0.3
+        self.title.scale_y = 0.5
+        self.clock.animate(
+            self.title,
+            'bounce_end',
+            duration=0.5,
+            scale_x=0.9,
+            scale_y=0.9,
+        )
+        self.clock.animate(
+            self.bomb,
+            'accelerate',
+            duration=0.5,
+            y=50,
+            on_finished=self.bounce_bomb,
+        )
+
+    HIGHLIGHT_TEXT = 0x51, 0x3a, 0x1b, 255
+
+    def bounce_bomb(self):
+        self.bomb.scale_x = 1.5
+        self.bomb.scale_y = 0.5
+        self.clock.animate(
+            self.bomb,
+            'bounce_end',
+            duration=0.5,
+            scale_x=1,
+            scale_y=1,
+        )
+
+        self.title_label = Label(
+            self.map.metadata.get('title', self.map.name),
+            x=self.window.width // 2,
+            y=self.window.height - 200,
+            font_name=BODY_FONT,
+            font_size=30,
+            anchor_x='center',
+            anchor_y='center',
+            color=(0, 0, 0, 255),
+            batch=self.batch,
+        )
+        self.hint_label = Label(
+            self.map.metadata.get('hint', 'Destroy all the beaver dams!'),
+            x=self.window.width // 2,
+            y=self.window.height - 300,
+            font_name=BODY_FONT,
+            font_size=20,
+            anchor_x='center',
+            anchor_y='center',
+            color=self.HIGHLIGHT_TEXT,
+            batch=self.batch,
+        )
+        self.author_label = Label(
+            'Creator:' + self.map.metadata.get('author', 'Larry & Dan'),
+            x=20,
+            y=20,
+            font_name=BODY_FONT,
+            font_size=20,
+            color=self.HIGHLIGHT_TEXT,
+            batch=self.batch,
+        )
+
+    def on_key_press(self, *args):
+        self.end()
+
+    def on_mouse_press(self, *args):
+        # TODO: only when you click the bomb
         self.end()

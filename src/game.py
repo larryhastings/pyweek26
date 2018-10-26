@@ -26,7 +26,7 @@ import dynamite.scene
 from dynamite.maploader import load_map
 from dynamite.vec2d import Vec2D
 from dynamite.animation import animate as tween
-from dynamite.titles import TitleScreen, Screen
+from dynamite.titles import TitleScreen, Screen, IntroScreen
 
 TITLE = "Dynamite Valley"
 
@@ -1581,6 +1581,7 @@ game = Game()
 scene = dynamite.scene.Scene()
 level = None
 
+
 def start_level(filename):
     """Start the level with the given filename."""
     scene.clear()
@@ -1607,6 +1608,8 @@ def start_level(filename):
         window.set_caption(f'{title} - {TITLE}')
     else:
         window.set_caption(TITLE)
+
+    IntroScreen(window, map, on_finished=lambda: GameScreen(window))
 
 
 
@@ -1640,7 +1643,6 @@ def timer_callback(dt):
 
 class GameScreen(Screen):
     def start(self):
-        start_level('level1.txt')
         pyglet.clock.schedule_interval(timer_callback, callback_interval)
 
     def on_key_press(self, k, modifiers):
@@ -1672,7 +1674,7 @@ class GameScreen(Screen):
         scene.draw()
 
 
-TitleScreen(window, next_screen=GameScreen)
+TitleScreen(window, on_finished=lambda: start_level('level1.txt'))
 
 try:
     pyglet.app.run()
