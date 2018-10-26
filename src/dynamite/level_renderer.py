@@ -34,6 +34,8 @@ class LevelRenderer:
         'ggwg': (4, 0),
         'gggw': (4, 1),
         'gggg': (1, 1),
+        'wgwg': (3, 5),
+        'gwgw': (2, 5),
     }
 
     def __init__(self, level):

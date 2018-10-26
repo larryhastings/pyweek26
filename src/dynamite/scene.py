@@ -323,4 +323,5 @@ class Static(Actor):
         AnchoredImg('dispenser-timed-bomb', anchor_y=30),
         AnchoredImg('dispenser-freeze-bomb', anchor_y=30),
         'bullrush',
+        'rock',
     ]

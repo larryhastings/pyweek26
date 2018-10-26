@@ -9,7 +9,7 @@ class FlowParticles:
 
     SPEED = 0.6
     DRAGY = 0.3
-    DRAGX = 0.5
+    DRAGX = 0.4
 
     @classmethod
     def load(cls):

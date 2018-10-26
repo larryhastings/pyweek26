@@ -5,6 +5,7 @@ v MapWaterCurrentDown
 > MapWaterCurrentRight
 < MapWaterCurrentLeft
 T MapGrass + Scenery.factory('fir-tree')
+t MapGrass + Scenery.factory('fir-tree-small')
 @ MapGrass + Bush
 B MapGrass+ Scenery.factory('beaver')
 b MapWater + Scenery.factory('beaver-right')
