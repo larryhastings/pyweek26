@@ -30,7 +30,7 @@ def _read_grid(lines):
 
 def load_legend(filename, lines):
     legend = {}
-    print(f"lines is {lines}")
+    # print(f"lines is {lines}")
     for lineno, line in lines:
         line = line.strip()
         if not line:

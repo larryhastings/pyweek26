@@ -188,18 +188,6 @@ class MapScenery(MapGrass):
         return Scenery(pos, self.sprite)
 
 
-class GameState(Enum):
-    INVALID = 0
-    MAIN_MENU = 1
-    LOADING = 2
-    PRESHOW = 3
-    PLAYING = 4
-    PAUSED = 5
-    LEVEL_COMPLETE = 6
-    GAME_OVER = 7
-    GAME_WON = 8
-    CONFIRM_EXIT = 9
-
 
 class Clock:
     """
@@ -234,6 +222,7 @@ class Clock:
         easily be anything else (milliseconds, years, frames).
         """
         assert isinstance(interval, (int, float)) and interval, "must supply a valid (nonzero) interval!  got " + repr(interval)
+        self.counter = self.elapsed = self.next = 0
         self.name = name
         self.interval = interval
         self.callback = callback
@@ -241,9 +230,13 @@ class Clock:
         self.delay = delay
         self.reset()
 
+    def __repr__(self):
+        return f"Clock({self.name}, {self.counter}, {self.elapsed} / {self.next})"
+
     # dt is fractional seconds e.g. 0.001357
     def advance(self, dt):
         if self.paused:
+            log(f"{self} {dt} PAUSED")
             return
 
         self.accumulator += dt
@@ -358,16 +351,11 @@ class Game:
 
         self.start = time.time()
 
-        self.old_state = self.state = GameState.INVALID
-        self.transition_to(GameState.PLAYING)
-
-        # self.renders = Clock("render", 1/4, self.render)
-        self.last_render = -1000
-        self.renders = 0
-
         self.logics = Clock("logic", logic_interval, self.logic)
 
         self.key_handler = self
+
+        self.paused = False
 
         def make_repeater(key):
             def callback():
@@ -390,21 +378,15 @@ class Game:
         if self.repeater:
             self.repeater.advance(dt)
 
-        if self.state == GameState.PLAYING:
+        if not self.paused:
+            # log(f"logics {self.logics} advance by dt {dt}")
             self.logics.advance(dt)
 
-
-    def on_state_PLAYING(self):
-        pass
 
     def transition_to(self, new_state):
         self.state = new_state
         _, _, name = str(new_state).rpartition(".")
         send_message(self, "on_state_" + name)
-
-    def render(self):
-        self.renders += 1
-        level.render()
 
     def logic(self):
         pass
@@ -918,6 +900,7 @@ class Player(Entity):
 
     def __init__(self, position):
         super().__init__(position)
+        log(f"{self} *** NEW PLAYER ***")
 
         game.key_handler = self
 
@@ -1071,18 +1054,19 @@ class Player(Entity):
 
 
     def on_key(self, k):
-        if self.dead:
-            # Can't do anything while dead
-            return
-        log(f"on key {key_repr(k)}")
+        log(f"{self} on key {key_repr(k)}")
 
-        if k == key.SPACE:
+        if k == key.ESCAPE:
             # pause / unpause
-            game.logics.paused = not game.logics.paused
+            game.paused = not game.paused
             return
 
         if k == key.L:
             # log!  that's all L does.
+            return
+
+        if self.dead:
+            log(f"{self} you're dead! you can't do {key_repr(k)} while you're dead!")
             return
 
         if k == key.E:
@@ -1117,30 +1101,37 @@ class Player(Entity):
 
         delta = key_to_movement_delta.get(k)
         if not delta:
+            log(f"{self} on key {key_repr(k)}, isn't a movement key, ignoring")
             return
 
         desired_orientation = key_to_orientation[k]
 
         if self.moving == PlayerAnimationState.MOVING_COMMITTED:
             if self.orientation == desired_orientation:
+                log(f"{self} on key {key_repr(k)}, we're committed to moving, ignoring keypress as we're already facing that way")
                 self.queued_key = None
                 return
+            log(f"{self} on key {key_repr(k)}, we're committed to moving, when we finish we'll turn {desired_orientation!r}")
             self.queued_key = k
             return
 
         if self.moving == PlayerAnimationState.MOVING_ABORTABLE:
             if self.orientation == desired_orientation:
                 # ignore
+                log(f"{self} on key {key_repr(k)}, we're abortable-moving, you pressed a redundant key, ignoring")
                 return
             self.queued_key = k
             # if we're quickly reversing direction,
             # abort movement if possible
             opposite_of_desired_orientation = key_to_orientation[key_to_opposite[k]]
+            log(f"{self} on key {key_repr(k)}, we're abortable-moving")
             if self.orientation == opposite_of_desired_orientation:
+                log(f"{self} on key {key_repr(k)}, aborting!")
                 self.abort_movement()
             return
 
         if self.orientation != desired_orientation:
+            log(f"{self} changing orientation to {desired_orientation!r}")
             self.orientation = desired_orientation
             self.actor.set_orientation(desired_orientation)
             return
@@ -1151,6 +1142,7 @@ class Player(Entity):
 
         result = self.can_move_to(new_position)
         if not result:
+            log(f"{self} can't move to {new_position} because {result}")
             return
         elif result is not True:
             stepping_onto_platform = result
@@ -1358,7 +1350,14 @@ class FloatingPlatform(Entity):
         if self._fling:
             return
 
-        delta = self.position - position
+        for delta in walk_vec2d_back_to_zero(self.position - position):
+            if not delta:
+                break
+            if self.floating:
+                tile = level.get(self.position + delta)
+                if not tile.water:
+                    continue
+            break
         if delta:
             # if queued for tile, unqueue
             log(f"{self} explosion will fling us by {delta}")
@@ -1590,17 +1589,32 @@ window.set_icon(
 window.set_visible(True)
 
 
-game = Game()
-scene = dynamite.scene.Scene()
+game = None
+game_screen = None
+scene = None
 level = None
 
 
+def start_game_screen():
+    global game_screen
+    game_screen = GameScreen(window)
+
 def start_level(filename):
     """Start the level with the given filename."""
-    scene.clear()
+    global game_screen
+    if game_screen:
+        game_screen.end()
+
+    global game
+    game = Game()
+
+    global scene
+    scene = dynamite.scene.Scene()
 
     global level
     level = Level()
+
+    log(f"loading level {filename}")
 
     map = load_map(filename, globals())
 
@@ -1622,7 +1636,7 @@ def start_level(filename):
     else:
         window.set_caption(TITLE)
 
-    IntroScreen(window, map, on_finished=lambda: GameScreen(window))
+    IntroScreen(window, map, on_finished=start_game_screen)
 
 
 
@@ -1656,6 +1670,8 @@ def timer_callback(dt):
     scene.flow.update(dt)
 
 
+pyglet.clock.schedule_interval(timer_callback, callback_interval)
+
 class GameScreen(Screen):
     def start(self):
         self.wall = pyglet.sprite.Sprite(
@@ -1663,7 +1679,6 @@ class GameScreen(Screen):
             x=0,
             y=self.window.height - 100
         )
-        pyglet.clock.schedule_interval(timer_callback, callback_interval)
 
     def on_key_press(self, k, modifiers):
         if k == key.F5:

@@ -13,13 +13,22 @@ from .scene import AnchoredImg
 
 BODY_FONT = 'Edo'
 
+serial_number = 0
 
 class Screen:
     SPRITES = []
     BGCOLOR = 66 / 255, 125 / 255, 193 / 255
 
+    def log(self, *a):
+        s = " ".join(str(s) for s in a)
+        # print(f"\n[{self.__class__.__name__}] #{self.serial_number} {s}\n")
+
     def __init__(self, window, on_finished=None):
         handlers = {}
+        global serial_number
+        serial_number += 1
+        self.serial_number = serial_number
+        self.log("__init__.  large and in charge.")
         for k in dir(self):
             if k.startswith('on_'):
                 handlers[k] = getattr(self, k)
@@ -31,6 +40,7 @@ class Screen:
         self.clock = clock.Clock(time_function=self._time)
         clock.schedule(self._tick)
         self.start()
+        self.log(">>>> push handlers >>>>")
         window.push_handlers(**handlers)
 
     def _time(self):
@@ -44,8 +54,10 @@ class Screen:
         """Start the screen."""
 
     def end(self):
+        self.log("<<<< pop handlers <<<<")
         self.window.pop_handlers()
         clock.unschedule(self._tick)
+        self.log(f"end() smaller, and no longer in charge.  finished handler is {self.on_finished}.")
         if self.on_finished:
             self.on_finished()
 
@@ -136,6 +148,7 @@ class TitleScreen(Screen):
         )
 
     def on_key_press(self, k, modifiers):
+        self.log(f"on_key_press {k} {modifiers}")
         self.end()
 
 
@@ -226,10 +239,11 @@ class IntroScreen(Screen):
             batch=self.batch,
         )
 
-    def on_key_press(self, *args):
+    def on_key_press(self, k, modifiers):
+        self.log(f"on_key_press {k} {modifiers}")
         self.end()
 
-    def on_mouse_press(self, *args):
+    def on_mouse_press(self, k, modifiers):
         # TODO: only when you click the bomb
         self.end()
 
