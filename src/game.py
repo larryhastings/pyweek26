@@ -602,6 +602,8 @@ class Entity:
         log(repr(self))
 
         self.position = position
+        if not isinstance(self, Claim):
+            self.claim = Claim(self)
 
     def on_level_loaded(self):
         pass
@@ -828,6 +830,21 @@ class Claim(Entity):
         self.owner.on_blasted(bomb, position)
 
 
+
+class Dam(Entity):
+    floating = True
+    is_platform = True
+
+    def __init__(self, position):
+        super().__init__(position)
+        self.actor = scene.spawn_static(self.position, 'beaver-dam')
+
+    def on_blasted(self, bomb, position):
+        super().on_blasted(bomb, position)
+        self.actor.delete()
+        self.position = None
+
+
 class Orientation(Enum):
     RIGHT = 0
     UP = 1
@@ -892,7 +909,6 @@ class Player(Entity):
 
         game.key_handler = self
 
-        self.claim = Claim(self)
         self.actor = scene.spawn_player(position)
         self.dead = False
 
@@ -1239,23 +1255,130 @@ XXOXX
 """)
 
 
-class Bomb(Entity):
-    blast_pattern = blast_pattern_1
-    detonated = False
-
+class FloatingPlatform(Entity):
     def __init__(self, position):
         super().__init__(position)
-        self.claim = Claim(self)
-        self.actor = scene.spawn_bomb(self.position, self.sprite_name)
+
         self.floating = level.get(position).water
         if self.floating:
             self.is_platform = True
         self.animator = Animator(game.logics)
         self.waiting_halfway = False
+        self.make_actor()
+        self.animate_if_on_moving_water()
+
+    def move_with_animation(self, position, logics):
+        log(f"{self} animating movement to {position}")
+        self.new_position = position
+        current_occupant = level.tile_occupant.get(position)
+        if current_occupant:
+            log(f"{self} wants to move to new_position, but it's occupied.  start moving anyway.")
+            self.queue_for_tile(position)
+        else:
+            self.claim.position = position
+
+        self.animator.animate(
+            self.actor, 'position',
+            position,
+            logics,
+            self._animation_finished,
+            self._animation_halfway,
+            self._animation_tick)
+
+    def animate_if_on_moving_water(self):
+        if self.standing_on:
+            return
+        tile = level.get(self.position)
+        self.moving = tile.moving_water
+        log(f"{self} placed at {self.position}, tile is {tile} moving? {self.moving}")
+
+        if not self.moving:
+            return
+
+        new_position = self.position + tile.current
+        self.move_with_animation(new_position, water_speed_logics)
+
+    def _animation_halfway(self):
+        current_occupant = level.tile_occupant[self.new_position]
+        if current_occupant and current_occupant != self.claim:
+            # we need to wait!
+            log(f"{self} halfway... but we need to wait! occupied by {current_occupant}.")
+            assert self.queued_tile == self.new_position, f"{self} queued_tile {self.queued_tile} != new_position {self.new_position} !!!"
+            self.waiting_halfway = True
+            self.animator.pause()
+            return
+
+        log(f"{self} halfway, proceeding.")
+        self.waiting_halfway = False
+        self.position = self.new_position
+        if self.occupant:
+            self.occupant.on_platform_moved(self)
+
+    def on_tile_available(self, entity, position):
+        assert self.queued_tile == position
+        assert level.tile_occupant[position] == None
+        log(f"{self} was queued for {position}, but it's now available! hooray!")
+        self.claim.position = position
+        self.unqueue_for_tile()
+        if self.waiting_halfway:
+            # we can proceed!
+            self.animator.unpause()
+            self._animation_halfway()
+
+    def _animation_finished(self):
+        log(f"{self} finished moving")
+        self.animate_if_on_moving_water()
+
+    def _animation_tick(self):
+        if self.animator and self.occupant:
+            self.occupant.on_platform_animated(self.animator.position)
+
+    def on_blasted(self, bomb, position):
+        super().on_blasted(bomb, position)
+        if self._fling:
+            # can't be double-flung! if we're already flinging somewhere
+            # we ignore it.
+            return
+        self.pushed_by_explosion(position)
+
+    def pushed_by_explosion(self, position):
+        log(f"{self} (current position {self.position}) pushed by explosion from {position}! existing fling {self._fling}")
+        if self._fling:
+            return
+
+        delta = self.position - position
+        if delta:
+            # if queued for tile, unqueue
+            log(f"{self} explosion will fling us by {delta}")
+            self.unqueue_for_tile()
+            self.fling(delta)
+        else:
+            log(f"{self} explosion delta is {delta} so we're not flinging")
+
+
+class Log(FloatingPlatform):
+
+    def __init__(self, position):
+        log(f"Log init, position is {position}")
+        super().__init__(position)
+        assert self.floating
+
+    def make_actor(self):
+        self.actor = scene.spawn_static(self.position, 'log')
+
+
+class Bomb(FloatingPlatform):
+    blast_pattern = blast_pattern_1
+    detonated = False
+
+    def __init__(self, position):
+        super().__init__(position)
 
         self.actor.z = 50
         tween(self.actor, 'accelerate', duration=0.2, on_finished=self.on_bomb_land, z=0)
-        self.animate_if_on_moving_water()
+
+    def make_actor(self):
+        self.actor = scene.spawn_bomb(self.position, self.sprite_name)
 
     def on_level_loaded(self):
         # when a bomb spawns on moving water,
@@ -1279,72 +1402,6 @@ class Bomb(Entity):
     def on_bomb_land(self):
         if self.floating:
             self.actor.play(f'{self.sprite_name}-float')
-
-    def move_with_animation(self, position, logics):
-        log(f"bomb {self} animating movement to {position}")
-        self.new_position = position
-        current_occupant = level.tile_occupant.get(position)
-        if current_occupant:
-            log(f"bomb {self} wants to move to new_position, but it's occupied.  start moving anyway.")
-            self.queue_for_tile(position)
-        else:
-            self.claim.position = position
-
-        self.animator.animate(
-            self.actor, 'position',
-            position,
-            logics,
-            self._animation_finished,
-            self._animation_halfway,
-            self._animation_tick)
-
-    def animate_if_on_moving_water(self):
-        if self.standing_on:
-            return
-        tile = level.get(self.position)
-        self.moving = tile.moving_water
-        log("bomb placed at", self.position, "tile is", tile, "moving?", self.moving)
-
-        if not self.moving:
-            return
-
-        new_position = self.position + tile.current
-        self.move_with_animation(new_position, water_speed_logics)
-
-    def on_tile_available(self, entity, position):
-        assert self.queued_tile == position
-        assert level.tile_occupant[position] == None
-        log(f"{self} was queued for {position}, but it's now available! hooray!")
-        self.claim.position = position
-        self.unqueue_for_tile()
-        if self.waiting_halfway:
-            # we can proceed!
-            self.animator.unpause()
-            self._animation_halfway()
-
-    def _animation_halfway(self):
-        current_occupant = level.tile_occupant[self.new_position]
-        if current_occupant and current_occupant != self.claim:
-            # we need to wait!
-            log(f"bomb {self} halfway... but we need to wait! occupied by {current_occupant}.")
-            assert self.queued_tile == self.new_position, f"{self} queued_tile {self.queued_tile} != new_position {self.new_position} !!!"
-            self.waiting_halfway = True
-            self.animator.pause()
-            return
-
-        log(f"bomb {self} halfway, proceeding.")
-        self.waiting_halfway = False
-        self.position = self.new_position
-        if self.occupant:
-            self.occupant.on_platform_moved(self)
-
-    def _animation_finished(self):
-        log(f"bomb {self} finished moving")
-        self.animate_if_on_moving_water()
-
-    def _animation_tick(self):
-        if self.animator and self.occupant:
-            self.occupant.on_platform_animated(self.animator.position)
 
     def detonate(self):
         if self.detonated:
@@ -1379,20 +1436,6 @@ class Bomb(Entity):
         print(f"{self} bomb has exploded, removing self.")
         self.position = None
         self.claim.position = None
-
-    def pushed_by_explosion(self, position):
-        log(f"{self} (current position {self.position}) pushed by explosion from {position}! existing fling {self._fling}")
-        if self._fling:
-            return
-
-        delta = self.position - position
-        if delta:
-            # if queued for tile, unqueue
-            log(f"{self} explosion will fling us by {delta}")
-            self.unqueue_for_tile()
-            self.fling(delta)
-        else:
-            log(f"{self} explosion delta is {delta} so we're not flinging")
 
     def on_blasted(self, bomb, position):
         super().on_blasted(bomb, position)
@@ -1441,20 +1484,6 @@ class Bomb(Entity):
             log(f"{self} was flung, but landed on {standing_on}, so we re-fling!")
             self.fling(fling.original_delta)
 
-
-
-class Dam(Entity):
-    floating = True
-    is_platform = True
-
-    def __init__(self, position):
-        super().__init__(position)
-        self.actor = scene.spawn_static(self.position, 'beaver-dam')
-
-    def on_blasted(self, bomb, position):
-        super().on_blasted(bomb, position)
-        self.actor.delete()
-        self.position = None
 
 
 class TimedBomb(Bomb):
