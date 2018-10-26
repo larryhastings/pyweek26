@@ -1260,6 +1260,9 @@ XXOXX
 
 
 class FloatingPlatform(Entity):
+
+    can_be_pushed_from_water_to_land = False
+
     def __init__(self, position):
         super().__init__(position)
 
@@ -1350,12 +1353,17 @@ class FloatingPlatform(Entity):
         if self._fling:
             return
 
-        for delta in walk_vec2d_back_to_zero(self.position - position):
+        delta = self.position - position
+        log(f"{self} delta {delta} floating {self.floating} can_be_pushed_from_water_to_land {self.can_be_pushed_from_water_to_land}")
+        for delta in walk_vec2d_back_to_zero(delta):
             if not delta:
                 break
             if self.floating:
-                tile = level.get(self.position + delta)
-                if not tile.water:
+                position = self.position + delta
+                tile = level.get(position)
+                log(f"{self} we're floating, tile at {position} is {tile}.  water? {tile.water}")
+                if not (tile.water or self.can_be_pushed_from_water_to_land):
+                    log(f"can't use delta {delta}, it would push us up from water to land")
                     continue
             break
         if delta:
@@ -1381,6 +1389,7 @@ class Log(FloatingPlatform):
 class Bomb(FloatingPlatform):
     blast_pattern = blast_pattern_1
     detonated = False
+    can_be_pushed_from_water_to_land = True
 
     def __init__(self, position):
         super().__init__(position)
