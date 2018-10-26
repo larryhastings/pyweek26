@@ -242,3 +242,16 @@ def animate(object, tween='linear', duration=1, on_finished=None, **targets):
         clock=None,
         **targets
     )
+
+
+def _clock_animate(self, object, tween='linear', duration=1, on_finished=None, **targets):
+    return Animation(
+        object,
+        tween,
+        duration,
+        on_finished=on_finished,
+        clock=self,
+        **targets
+    )
+
+pyglet.clock.Clock.animate = _clock_animate
