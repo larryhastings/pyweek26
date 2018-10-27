@@ -998,8 +998,39 @@ class Dam(Entity):
     def on_blasted(self, bomb, position):
         super().on_blasted(bomb, position)
         self.actor.delete()
+        pos = self.position
         self.position = None
         level.on_dam_destroyed(self)
+        scene.spawn_particles(
+            3,
+            sprite_name='leaf1',
+            position=pos,
+            speed=2,
+            zrange=(5, 20),
+            vzrange=(5, 100),
+            va=200,
+            drag=0.5
+        )
+        scene.spawn_particles(
+            2,
+            sprite_name='leaf2',
+            position=pos,
+            speed=2,
+            zrange=(5, 20),
+            vzrange=(5, 100),
+            va=100,
+            drag=0.7
+        )
+        scene.spawn_particles(
+            8,
+            sprite_name='twig',
+            position=pos,
+            speed=0.8,
+            zrange=(5, 10),
+            vzrange=(15, 20),
+            va=300,
+            drag=0.8
+        )
 
 
 class Orientation(Enum):
@@ -1992,7 +2023,28 @@ class Bush(Scenery):
         super().__init__(position, 'bush')
 
     def on_blasted(self, bomb, position):
+        pos = self.position
         self.remove()
+        scene.spawn_particles(
+            10,
+            sprite_name='leaf1',
+            position=pos,
+            speed=2,
+            zrange=(5, 50),
+            vzrange=(5, 100),
+            va=200,
+            drag=0.5
+        )
+        scene.spawn_particles(
+            8,
+            sprite_name='leaf2',
+            position=pos,
+            speed=2,
+            zrange=(5, 50),
+            vzrange=(5, 100),
+            va=100,
+            drag=0.7
+        )
 
 
 # We have to start with the window invisible in order to be able to set

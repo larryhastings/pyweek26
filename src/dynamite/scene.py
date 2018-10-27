@@ -1,23 +1,27 @@
-import operator
-from itertools import chain
+import math
+import random
 
 from pyglet import gl
+from pyglet import clock
 import pyglet.resource
 import pyglet.graphics
 import pyglet.sprite
 
 from .coords import map_to_screen
+from .vec2d import Vec2D
 
 
 class Scene:
     def __init__(self):
         self.objects = set()
         self.batch = pyglet.graphics.Batch()
+        self.clock = clock
 
         Static.load()
         Bomb.load()
         Player.load()
         Explosion.load()
+        Particle.load()
 
     def clear(self):
         self.objects.clear()
@@ -39,6 +43,31 @@ class Scene:
     def spawn_explosion(self, position):
         Explosion(self, position)
 
+    def spawn_particles(self, num, sprite_name, position, zrange, speed, vzrange, va, drag=0):
+        for _ in range(num):
+            # Choose a random angle anywhere in the circle
+            angle = random.uniform(0, math.tau)
+            # Choose a random radius using a controllable distribution
+            radius = math.sqrt(random.uniform(0, 1))
+
+            # Convert angle/radius to a cartesian vector
+            vx = speed * radius * math.sin(angle)
+            vy = speed * radius * math.cos(angle)
+            z = random.uniform(*zrange)
+            vz = random.uniform(*vzrange)
+            if random.randint(0, 1) == 1:
+                va = -va
+
+            Particle(
+                self,
+                position,
+                sprite_name,
+                (vx, vy),
+                z,
+                vz,
+                va,
+                drag
+            )
 
 
 class AnchoredImg:
@@ -337,3 +366,39 @@ class Static(Actor):
         'bullrush',
         'rock',
     ]
+
+
+class Particle(Actor):
+    """3D-ish particle effects."""
+    SPRITES = [
+        'timed-bomb',
+        'freeze-bomb',
+        'contact-bomb',
+        AnchoredImg('leaf1', anchor_y=20),
+        'leaf2',
+        'twig',
+    ]
+
+    GRAVITY = -100
+
+    def __init__(self, scene, position, sprite_name, vxy, z, vz, va, drag=0):
+        super().__init__(scene, position, sprite_name)
+        self.vxy = Vec2D(vxy)
+        self.sprite.rotation = random.randrange(360)
+        self.z = z
+        self.vz = vz
+        self.va = va
+        self.drag = drag
+        self.scene.clock.schedule(self.update)
+
+    def update(self, dt):
+        self.vz = self.vz * self.drag ** dt + self.GRAVITY * dt
+        self.z += self.vz * dt
+
+        if self.z < 0:
+            self.delete()
+            return
+
+        self.vxy *= self.drag ** dt
+        self.position += self.vxy * dt
+        self.sprite.rotation += self.va * dt
