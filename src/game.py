@@ -2376,7 +2376,7 @@ class GameScreen(Screen):
 
     def on_draw(self):
         gl.glClearColor(66 / 255, 125 / 255, 193 / 255, 0)
-        gl.glMatrixMode(gl.GL_MODELVIEW_MATRIX)
+        gl.glMatrixMode(gl.GL_MODELVIEW)
         gl.glPushMatrix()
 
         x, y = self.cam_offset
