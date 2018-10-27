@@ -1167,7 +1167,7 @@ class Player(Entity):
             # if self.moving != PlayerAnimationState.STATIONARY:
             #     log("can't drop a bomb, player is moving.")
             #     return
-            
+
             # drop bomb
             if not level.player.bombs:
                 log("can't drop a bomb, player is out of bombs.")
@@ -1960,8 +1960,10 @@ def screenshot_path():
 
 
 def timer_callback(dt):
-    game.timer(dt)
-    scene.flow.update(dt)
+    if game:
+        game.timer(dt)
+    if scene:
+        scene.flow.update(dt)
 
 
 pyglet.clock.schedule_interval(timer_callback, callback_interval)
