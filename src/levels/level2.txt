@@ -20,7 +20,7 @@ C MapGrass + Dispenser.factory(TimedBomb)
 r MapWater + Scenery.factory('bullrush')
 R MapGrass + Scenery.factory('rock')
 
-:title: Moving Water
+:title: The Torrent
 :author: mauve
-:hint: Floating bombs can be stepped on!
+:hint: Badgers make their dams near fast rivers
 :next: level3.txt
