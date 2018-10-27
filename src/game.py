@@ -74,34 +74,42 @@ FlowParticles.load()
 
 
 remapped_keys = {
+    key.ESCAPE: key.ESCAPE,
+    key.ENTER: key.ENTER,
+    key.SPACE: key.SPACE,
+
     key.W: key.UP,
     key.A: key.LEFT,
     key.S: key.DOWN,
     key.D: key.RIGHT,
+
     key.UP: key.UP,
     key.LEFT: key.LEFT,
     key.DOWN: key.DOWN,
     key.RIGHT: key.RIGHT,
-    key.ESCAPE: key.ESCAPE,
-    key.ENTER: key.ENTER,
+
     key.B: key.B,
-    key.L: key.L,
     key.E: key.E,
-    key.SPACE: key.SPACE,
+    key.L: key.L,
+    key.T: key.T,
 }
+
 interesting_key = remapped_keys.get
 
 _key_repr = {
+    key.ESCAPE: "Escape",
+    key.ENTER: "Enter",
+    key.SPACE: "Space",
+
     key.UP: "Up",
     key.LEFT: "Left",
     key.DOWN: "Down",
     key.RIGHT: "Right",
-    key.ESCAPE: "Escape",
-    key.ENTER: "Enter",
 
     key.B: "B",
+    key.E: "E",
     key.L: "L",
-    key.SPACE: "Space",
+    key.T: "T",
     }
 key_repr = _key_repr.get
 
@@ -933,6 +941,7 @@ class Player(Entity):
         self.queued_key = self.held_key = None
 
         self.bombs = []
+        self.remote_control_bombs = []
 
     def on_blasted(self, bomb, position):
         if not self.dead:
@@ -1080,6 +1089,13 @@ class Player(Entity):
             if not target_obj:
                 return
             target_obj.interact(level.player)
+            return
+
+        if k == key.T:
+            # trigger remote control bomb
+            if level.player.remote_control_bombs:
+                bomb = level.player.remote_control_bombs.pop(0)
+                bomb.detonate()
             return
 
         if k == key.B:
@@ -1589,6 +1605,14 @@ class ContactBomb(Bomb):
     def on_pushed_into_something(self, tile, occupant):
         log(f"contact bomb pushed onto {tile} {occupant}! kaboom!")
         self.detonate()
+
+class RemoteControlBomb(Bomb):
+    sprite_name = 'timed-bomb'
+
+    def __init__(self, position):
+        super().__init__(position)
+        level.player.remote_control_bombs.append(self)
+
 
 
 class Scenery(Entity):
