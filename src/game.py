@@ -815,7 +815,13 @@ class Entity:
                 log(f"{self} departing {old_position}, being flung.")
             else:
                 log(f"{self} departing {old_position}, but I don't understand how. old_occupant {old_occupant} new_occupant {new_occupant} standing_on {self.standing_on} _fling {self._fling}.")
-            #     assert False, f"{self}: I don't understand how we used to be on {old_position}, occupant is {old_occupant} and self.standing_on is {self.standing_on}"
+                if self.standing_on:
+                    # we were standing on something, but we've moved.
+                    # the thing we were standing on isn't in the old tile.
+                    # it isn't in the new tile either.
+                    # you know what?  just don't be standing on that thing anymore.
+                    self.standing_on.on_stepped_on(None)
+                    self.standing_on = None
 
         if position is not None:
             if new_occupant and (new_occupant == self.claim):
@@ -1169,6 +1175,7 @@ class Player(Entity):
         self.remote_control_bombs = []
 
         self.new_position = self.new_platform = None
+        self.halfway = False
         self.select_anim()
 
     def on_died(self):
@@ -1250,17 +1257,31 @@ class Player(Entity):
             self.drown()
             return
 
-        if self.moving == PlayerAnimationState.MOVING_ABORTABLE:
-            self.new_position = platform.position
-        else:
-            assert self.moving in (PlayerAnimationState.MOVING_COMMITTED, PlayerAnimationState.STATIONARY)
+        assert platform == self.standing_on
+
+        if self.moving == PlayerAnimationState.STATIONARY:
             self.position = platform.position
+            return
+
+        # okay, we're moving.  are we not halfway yet?
+        # if we're not halfway, then we're stepping *off* this
+        # platform.  we should ignore movement updates.
+        if not self.halfway:
+            log(f"{self} we're not halfway.  stepping off.  ignoring platform location update.")
+            return
+
+        # okay, we're halfway. which means we're stepping
+        # *onto* this platform.  reroute to new position.
+        assert self.moving == PlayerAnimationState.MOVING_COMMITTED
+        new_position = platform.position
+        self.animator.reroute(new_position)
 
     def on_platform_animated(self, position):
         if self.moving != PlayerAnimationState.STATIONARY:
             return
         if self.move_action is MovementAction.DISEMBARK:
             return
+
         if ((self.moving != PlayerAnimationState.STATIONARY)
             and self.animator):
             # FIXME: this updates the animator even if we're hopping off
@@ -1270,6 +1291,7 @@ class Player(Entity):
 
     def _animation_halfway(self):
         self.moving = PlayerAnimationState.MOVING_COMMITTED
+        self.halfway = True
         new_position = self.new_position
         if (not self.new_platform) or (self.new_platform.position == self.new_position):
             log(f"{self} everything's fine, just move to {self.new_position}.")
@@ -1285,6 +1307,7 @@ class Player(Entity):
 
     def _animation_finished(self):
         log(f"{self} finished animating")
+        self.halfway = False
         self.moving = PlayerAnimationState.STATIONARY
         self.move_action = None
         self.moving_to = None
@@ -1501,6 +1524,7 @@ class Player(Entity):
         if self.moving != PlayerAnimationState.MOVING_ABORTABLE:
             return
         self.move_action = None
+        self.halfway = False
         self.moving = PlayerAnimationState.MOVING_COMMITTED
         starting_position = self.animator.position
         tween(self.actor, duration=0.1, z=20 if self.standing_on else 0)
