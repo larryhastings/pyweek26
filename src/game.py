@@ -1164,9 +1164,10 @@ class Player(Entity):
             return
 
         if k == key.B:
-            if self.moving != PlayerAnimationState.STATIONARY:
-                log("can't drop a bomb, player is moving.")
-                return
+            # if self.moving != PlayerAnimationState.STATIONARY:
+            #     log("can't drop a bomb, player is moving.")
+            #     return
+            
             # drop bomb
             if not level.player.bombs:
                 log("can't drop a bomb, player is out of bombs.")
