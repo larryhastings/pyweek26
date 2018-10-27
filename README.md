@@ -43,6 +43,10 @@ unlit one is just lying on the ground.
 B drops a bomb into the square where Ranger Jim
 is facing.
 
-Escape pauses the level and lets you quit the game.
+Escape pauses the game.  While paused:
+* Escape unpauses.
+* Y quits back to the main menu.
+
+F5 reloads the current level at any time.
 
 Now get out there and wipe out those dams!

@@ -559,7 +559,7 @@ class Level:
         game.pause()
         self.on_esc_pressed = self.unpause
         self.on_y_pressed = title_screen
-        game_screen.display_big_text_and_wait("PAUSED", "Abort game? Press Esc to resume game, press Y to abort game.")
+        game_screen.display_big_text_and_wait("PAUSED", "Esc to resume - Y to abort - F5 to restart")
 
     def unpause(self):
         if not game.paused:
