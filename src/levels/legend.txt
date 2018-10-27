@@ -11,3 +11,4 @@ B MapGrass+ Scenery.factory('beaver')
 b MapWater + Scenery.factory('beaver-right')
 d MapWater + Scenery.factory('beaver-left')
 S MapGrass + Player
+R MapGrass + Scenery.factory('rock')
