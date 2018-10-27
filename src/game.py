@@ -480,6 +480,10 @@ class Animator:
         """
         self.clock = clock
         self.timer = self.halfway_timer = None
+        self.obj = self.start = self.end = None
+
+    def __repr__(self):
+        return f"Animator({self.obj}, {self.start}, {self.end}, {self.ratio})"
 
     def animate(self, obj, property, end, interval, callback=None, halfway_callback=None, tick_callback=None):
         self.cancel()
@@ -493,6 +497,7 @@ class Animator:
         self.callback = callback
         self.halfway_callback = halfway_callback
         self.tick_callback = tick_callback
+        self.ratio_offset = 0
 
         self.timer = Timer("animator", self.clock, interval, self._complete, on_tick=self._on_tick)
         if halfway_callback:
@@ -509,6 +514,22 @@ class Animator:
             self.timer = None
         self.obj = self.property = None
         self.occupant = None
+
+    def reroute(self, destination):
+        """
+        Change our animation to smoothly animate to a new position.
+        Don't start the timer over.  Instead, recalculate so that
+        we start at the exact current (animated) spot, end up
+        at the new position, and finish at the same time we would
+        have if we hadn't been rerouted.
+        """
+        log(f"{self} rerouting to {destination}")
+        current_position = self.position
+        ratio_offset = self.ratio
+
+        self.start = current_position
+        self.end = destination
+        self.ratio_offset = self.ratio
 
     def pause(self):
         self.timer.pause()
@@ -542,7 +563,11 @@ class Animator:
 
     @property
     def position(self):
-        return self.start + ((self.end - self.start) * self.ratio)
+        ratio = self.ratio
+        if self.ratio_offset:
+            range = 1 - self.ratio_offset
+            ratio = (ratio - self.ratio_offset) / range
+        return self.start + ((self.end - self.start) * ratio)
 
 def walk_vec2d_back_to_zero(v):
     yield v
@@ -673,25 +698,29 @@ class Entity:
         if old_position is not None:
             old_occupant = level.tile_occupant[old_position]
             if old_occupant == self:
-                log(f"level.tile_occupant[{old_position}] = None")
+                log(f"{self} departing {old_position}, clearing level.tile_occupant.")
                 level.tile_occupant[old_position] = None
                 departed_tile = old_position
             elif self.standing_on == old_occupant:
+                log(f"{self} departing {old_position}, stepping off {old_occupant}.")
                 old_occupant.on_stepped_on(None)
                 self.standing_on = None
             elif self.standing_on and (self.standing_on == new_occupant):
                 # if what we're standing on moved to this new position,
                 # guess what! the platform moved! we're not stepping off!
+                log(f"{self} departing {old_position}, apparently riding on {new_occupant}.")
                 pass
             elif self._fling:
                 # we're being flung.  our old position was a mystery for the ages.
                 # hopefully our final destination will be less so.
-                pass
-            # else:
+                log(f"{self} departing {old_position}, being flung.")
+            else:
+                log(f"{self} departing {old_position}, but I don't understand how. old_occupant {old_occupant} new_occupant {new_occupant} standing_on {self.standing_on} _fling {self._fling}.")
             #     assert False, f"{self}: I don't understand how we used to be on {old_position}, occupant is {old_occupant} and self.standing_on is {self.standing_on}"
 
         if position is not None:
             if new_occupant and (new_occupant == self.claim):
+                log(f"{self} clearing our claim on this tile.")
                 # moving to our claimed tile
                 new_occupant = None
                 # MILD HACK don't use descriptor to assign here
@@ -699,15 +728,16 @@ class Entity:
                 # and call on_tile_available() on the next queued guy
                 self.claim._position = None
             if new_occupant == None:
-                log(f"level.tile_occupant[{position}] = {self}")
+                log(f"{self} moving to {position}, tile is not occupied by anyone.")
                 level.tile_occupant[position] = self
             elif new_occupant.is_platform:
                 assert new_occupant.occupant in (None, self, self.claim), f"we can't step on {new_occupant}, it's occupied by {new_occupant.occupant}"
-                log(f"{self} stepping onto existing tile occupant {new_occupant}")
+                log(f"{self} moving to {position}, stepping onto existing tile occupant {new_occupant}")
                 self.standing_on = new_occupant
                 new_occupant.on_stepped_on(self)
-            # else:
-            #     assert False, f"{self}: I don't understand how we can move to {position}"
+            else:
+                log(f"{self} moving to {position}, but I don't understand how, it's occupied by {new_occupant} and we can't step on it.")
+                #     assert False, f"{self}: I don't understand how we can move to {position}"
 
         if departed_tile:
             # tell the next entity in the queue
@@ -972,7 +1002,6 @@ class Player(Entity):
 
     def __init__(self, position):
         super().__init__(position)
-        log(f"{self} *** NEW PLAYER ***")
 
         game.key_handler = self
 
@@ -1006,6 +1035,8 @@ class Player(Entity):
 
         self.bombs = []
         self.remote_control_bombs = []
+
+        self.new_position = self.new_platform = None
 
     def on_blasted(self, bomb, position):
         if not self.dead:
@@ -1075,10 +1106,21 @@ class Player(Entity):
 
     def _animation_halfway(self):
         self.moving = PlayerAnimationState.MOVING_COMMITTED
-        self.position = self.new_position
+        new_position = self.new_position
+        if (not self.new_platform) or (self.new_platform.position == self.new_position):
+            log(f"{self} everything's fine, just move to {self.new_position}.")
+        else:
+            # we're moving to a platform.  if it moved
+            # out from underneath us, animate smoothly to
+            # its new location.
+            log(f"{self} platform moved out from underneath us from {self.new_position} to {self.new_platform.position}.  update position and reroute animation.")
+            new_position = self.new_platform.position
+            self.animator.reroute(self.new_platform.position)
+        self.position = new_position
+
 
     def _animation_finished(self):
-        log("finished animating")
+        log(f"{self} finished animating")
         self.moving = PlayerAnimationState.STATIONARY
         self.moving_to = None
         if self.queued_key:
@@ -1092,22 +1134,22 @@ class Player(Entity):
 
     def cancel_start_moving(self):
         if self.start_moving_timer:
-            log("canceling start_moving_timer")
+            log(f"{self} canceling start_moving_timer")
             self.start_moving_timer.cancel()
             self.start_moving_timer = None
         else:
-            log("no start_moving_timer to cancel")
+            log(f"{self} no start_moving_timer to cancel")
 
     def on_key_press(self, k):
         if key_to_movement_delta.get(k):
-            log(f"key press {key_repr(k)}")
+            log(f"{self} key press {key_repr(k)}")
             self.cancel_start_moving()
             self.held_key = k
             self.start_moving_timer = Timer("start moving " + key_repr(k), game.logics, player_movement_delay_logics, self._start_moving)
 
     def on_key_release(self, k):
         if k == self.held_key:
-            log(f"key release {key_repr(k)}")
+            log(f"{self} key release {key_repr(k)}")
             self.cancel_start_moving()
             self.held_key = None
 
@@ -1250,10 +1292,13 @@ class Player(Entity):
             self._animation_finished,
             self._animation_halfway)
         if (not self.standing_on) and stepping_onto_platform:
+            log("{self} hopping up")
             stepping_onto_platform.occupant = self.claim
+            self.new_platform = stepping_onto_platform
             tween(self.actor, 'hop_up', duration=typematic_interval, z=20)
             self.move_action = MovementAction.EMBARK
         elif self.standing_on and (not stepping_onto_platform):
+            log("{self} hopping down")
             tween(self.actor, 'hop_down', duration=typematic_interval, z=0)
             self.move_action = MovementAction.DISEMBARK
         else:
