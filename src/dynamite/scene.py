@@ -358,6 +358,10 @@ class Bomb(Actor):
         floating('freeze-bomb-float-red'),
         floating('freeze-bomb-float-frozen'),
         AnchoredImg('spark'),
+        'remote-bomb',
+        'remote-bomb-frozen',
+        floating('remote-bomb-float'),
+        floating('remote-bomb-float-frozen'),
     ]
     del floating
     red = False
@@ -454,6 +458,7 @@ class Static(Actor):
         AnchoredImg('dispenser-contact-bomb', anchor_y=30),
         AnchoredImg('dispenser-timed-bomb', anchor_y=30),
         AnchoredImg('dispenser-freeze-bomb', anchor_y=30),
+        AnchoredImg('dispenser-remote-bomb', anchor_y=30),
         'bullrush',
         'rock',
     ]

@@ -2050,7 +2050,7 @@ class ContactBomb(Bomb):
 
 
 class RemoteControlBomb(Bomb):
-    sprite_name = 'timed-bomb'
+    sprite_name = 'remote-bomb'
 
 
 class Scenery(Entity):
@@ -2130,10 +2130,10 @@ def start_game_screen():
 level_number = None
 level_set = None
 
-def start_game(_level_set):
+def start_game(_level_set, start_level=1):
     global level_number
     global level_set
-    level_number = 0
+    level_number = start_level - 1
     level_set = _level_set
     next_level()
 
@@ -2412,7 +2412,7 @@ if len(sys.argv) > 1:
     except ValueError:
         pass
     else:
-        start_game('level{number}.txt')
+        start_game('level{number}.txt', level_number)
 else:
     # note: NOT AN F STRING
     # this is LAZILY COMPUTED when NUMBER changes
