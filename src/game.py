@@ -1467,6 +1467,8 @@ class Bomb(FloatingPlatform):
 
         Bombs that cannot be taken will override this method.
         """
+        if self.floating:
+            return
         taken = player.push_bomb(type(self))
         if taken:
             self.actor.delete()
