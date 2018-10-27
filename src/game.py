@@ -1297,13 +1297,25 @@ class FloatingPlatform(Entity):
             return
         tile = level.get(self.position)
         self.moving = tile.moving_water
-        log(f"{self} placed at {self.position}, tile is {tile} moving? {self.moving}")
+        log(f"{self} placed at {self.position}, tile is {tile}. is it moving water? {self.moving}")
 
         if not self.moving:
             return
 
         new_position = self.position + tile.current
+        next_tile = level.get(new_position)
+        next_occupant = level.tile_occupant[new_position]
+        log(f"{self} what's going on on the next tile? {new_position} {next_tile} {next_occupant}")
+        if not (next_tile.water and not next_occupant):
+            # we're being pushed into something besides an empty water tile.
+            # mabye we react?
+            self.on_pushed_into_something(next_tile, next_occupant)
+            return
         self.move_with_animation(new_position, water_speed_logics)
+
+    def on_pushed_into_something(self, tile, occupant):
+        log(f"bomb pushed onto {tile} {occupant}.  we'll start moving there anyway.")
+        pass
 
     def _animation_halfway(self):
         current_occupant = level.tile_occupant[self.new_position]
@@ -1554,6 +1566,18 @@ class TimedBomb(Bomb):
             else:
                 next = 0.1 * logics_per_second
             Timer("bomb toggle red again", game.logics, next, self.toggle_red)
+
+class ContactBomb(Bomb):
+    sprite_name = 'contact-bomb'
+
+    def on_blasted(self, bomb, position):
+        # explicitly pass over FloatingPlatform.on_blasted
+        super(FloatingPlatform, self).on_blasted(bomb, position)
+        self.detonate()
+
+    def on_pushed_into_something(self, tile, occupant):
+        log(f"contact bomb pushed onto {tile} {occupant}! kaboom!")
+        self.detonate()
 
 
 class Scenery(Entity):

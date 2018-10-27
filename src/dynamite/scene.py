@@ -251,6 +251,7 @@ class Bomb(Actor):
         'timed-bomb-red',
         'freeze-bomb',
         'contact-bomb',
+        'contact-bomb-float',
         ImageSequence(
             'timed-bomb-float',
             frames=2,
