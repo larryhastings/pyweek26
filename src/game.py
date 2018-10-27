@@ -2028,6 +2028,7 @@ class TimedBomb(Bomb):
             return
         self.t += dt
 
+        self.spark.position = (20, 27) if self.floating else (18, 35)
         self.spark.scale = 0.5 + 0.1 * math.sin(self.t * 10)
         if not self.frozen:
             self.spark.rotation += 1.5 * 360 * dt
