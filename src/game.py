@@ -2174,6 +2174,7 @@ level = None
 def start_game_screen():
     global game_screen
     game_screen = GameScreen(window)
+    game.unpause()
 
 level_number = None
 level_set = None
@@ -2242,6 +2243,7 @@ def start_level(filename):
     else:
         window.set_caption(TITLE)
 
+    game.pause()
     IntroScreen(window, map, on_finished=start_game_screen)
 
 
@@ -2475,6 +2477,8 @@ class GameScreen(Screen):
 
 
 def title_screen():
+    # note: NOT AN F STRING
+    # this is LAZILY COMPUTED when NUMBER changes
     level_set ='level{number}.txt'
     TitleScreen(
         window,
@@ -2489,8 +2493,6 @@ if len(sys.argv) > 1:
     else:
         start_game('level{number}.txt', level_number)
 else:
-    # note: NOT AN F STRING
-    # this is LAZILY COMPUTED when NUMBER changes
     title_screen()
 
 
