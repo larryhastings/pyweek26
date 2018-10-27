@@ -1161,6 +1161,7 @@ class Player(Entity):
         self.animator = Animator(game.logics)
         self.halfway_timer = None
         self.moving = PlayerAnimationState.STATIONARY
+        self.move_action = None
         self.start_moving_timer = None
         self.queued_key = self.held_key = None
 
@@ -1256,6 +1257,8 @@ class Player(Entity):
             self.position = platform.position
 
     def on_platform_animated(self, position):
+        if self.moving != PlayerAnimationState.STATIONARY:
+            return
         if self.move_action is MovementAction.DISEMBARK:
             return
         if ((self.moving != PlayerAnimationState.STATIONARY)
@@ -1283,6 +1286,7 @@ class Player(Entity):
     def _animation_finished(self):
         log(f"{self} finished animating")
         self.moving = PlayerAnimationState.STATIONARY
+        self.move_action = None
         self.moving_to = None
         if self.queued_key:
             if self.held_key:
@@ -1475,16 +1479,17 @@ class Player(Entity):
             self._animation_finished,
             self._animation_halfway)
         if (not self.standing_on) and stepping_onto_platform:
-            log("{self} hopping up")
+            log(f"{self} hopping up")
             stepping_onto_platform.occupant = self.claim
             self.new_platform = stepping_onto_platform
             tween(self.actor, 'hop_up', duration=typematic_interval, z=20)
             self.move_action = MovementAction.EMBARK
         elif self.standing_on and (not stepping_onto_platform):
-            log("{self} hopping down")
+            log(f"{self} hopping down")
             tween(self.actor, 'hop_down', duration=typematic_interval, z=0)
             self.move_action = MovementAction.DISEMBARK
         else:
+            log(f"{self} moving between two tiles of the same altitude")
             self.move_action = MovementAction.MOVE
 
     def _start_moving(self):
