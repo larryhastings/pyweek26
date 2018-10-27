@@ -67,6 +67,7 @@ srcdir = Path(__file__).parent
 pyglet.resource.path = [
     'images',
     'levels',
+    'sounds',
 ]
 pyglet.resource.reindex()
 pyglet.resource.add_font('edo.ttf')
@@ -1278,6 +1279,8 @@ class Player(Entity):
         log(f"{self} can {verb} space!  it's navigable, and current occupant is {occupant}.")
         return True
 
+    thud = pyglet.resource.media('thud.wav', streaming=False)
+    splash = pyglet.resource.media('splash.wav', streaming=False)
 
     def on_key(self, k):
         log(f"{self} on key {key_repr(k)}")
@@ -1326,6 +1329,12 @@ class Player(Entity):
                 return
             cls = level.player.pop_bomb()
             bomb = cls(bomb_position)
+            if bomb.floating:
+                snd = self.splash
+            else:
+                snd = self.thud
+
+            clock.schedule_once(lambda dt: snd.play(), 0.3)
             level.player.remote_control_bombs.append(bomb)
             if result is not True:
                 log(f"skipping bomb {bomb} across other bomb {result}")
@@ -1804,7 +1813,7 @@ class Bomb(FloatingPlatform):
             self.animator.cancel()
         self.unqueue_for_tile()
         self.actor.scene.spawn_explosion(self.actor.position)
-        game_screen.screen_shake()
+        self.detonation_effects()
         self.actor.delete()
         self.remove()  # Remove ourselves before processing on_blasted
         # t = Timer(f"bomb {self} detonation", game.logics, exploding_bomb_interval, self.remove)
@@ -1850,6 +1859,12 @@ class Bomb(FloatingPlatform):
         if standing_on:
             standing_on.occupant = None
             standing_on = None
+
+    explosion = pyglet.resource.media('explosion2.wav', streaming=False)
+
+    def detonation_effects(self):
+        self.explosion.play()
+        game_screen.screen_shake()
 
 
 
@@ -1969,7 +1984,7 @@ class FreezeBomb(TimedBomb):
             self.animator.cancel()
         self.unqueue_for_tile()
         self.actor.scene.spawn_explosion(self.actor.position, freeze=True)
-        game_screen.screen_shake()
+        self.detonation_effects()
 
         self.actor.delete()
         self.remove()  # Remove ourselves before processing on_blasted
