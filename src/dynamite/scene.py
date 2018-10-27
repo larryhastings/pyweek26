@@ -329,6 +329,9 @@ class Bomb(Actor):
     red = False
 
     def play(self, name):
+        if not self.scene:
+            return
+
         was_frozen = self.anim.endswith('-frozen')
         super().play(name)
         now_frozen = name.endswith('-frozen')
@@ -353,6 +356,8 @@ class Bomb(Actor):
         )
 
     def delete(self):
+        if not self.scene:
+            return
         self.scene.clock.unschedule(self.eject_snowflake)
         super().delete()
 

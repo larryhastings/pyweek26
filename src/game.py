@@ -485,33 +485,6 @@ class Level:
         if not self.dams_remaining:
             self.complete()
 
-    def display_big_text_and_wait(self, big_text):
-        self.complete_label = Label(
-            big_text,
-            x=window.width // 2,
-            y=window.height - 200,
-            font_name=BODY_FONT,
-            font_size=40,
-            anchor_x='center',
-            anchor_y='center',
-            color=(0, 0, 0, 255),
-            batch=scene.level_renderer.batch,
-            group=pyglet.graphics.OrderedGroup(2)
-        )
-        self.any_key_label = Label(
-            "Press Space to continue",
-            x=window.width // 2,
-            y=window.height - 300,
-            font_name=BODY_FONT,
-            font_size=15,
-            anchor_x='center',
-            anchor_y='center',
-            color=IntroScreen.HIGHLIGHT_TEXT,
-            batch=scene.level_renderer.batch,
-            group=pyglet.graphics.OrderedGroup(2)
-        )
-        game.key_handler = self
-
     def complete(self):
         game_screen.hide_hud()
 
@@ -521,26 +494,20 @@ class Level:
         except pyglet.resource.ResourceNotFoundException:
             return self.game_won()
 
-        self.display_big_text_and_wait("LEVEL COMPLETE!")
+        game_screen.display_big_text_and_wait("LEVEL COMPLETE!")
         self.on_space_pressed = next_level
 
-
     def player_died(self):
-        self.display_big_text_and_wait("YOU DIED!")
+        game_screen.display_big_text_and_wait("YOU DIED!")
         self.on_space_pressed = reload_level
 
     def game_won(self):
         log("you win!")
-        self.display_big_text_and_wait("YOU WON!")
+        game_screen.display_big_text_and_wait("YOU WON!")
         self.on_space_pressed = title_screen
         # game.key_handler = self
         # GameWonScreen(window, on_finished=title_screen)
 
-    def on_key_press(self, k):
-        if k == key.SPACE:
-            if self.on_space_pressed:
-                self.on_space_pressed()
-                self.on_space_pressed = None
 
 class Animator:
     def __init__(self, clock):
@@ -2231,7 +2198,9 @@ class GameScreen(Screen):
             x=0,
             y=self.window.height - 100,
         )
+        self.create_hud()
 
+    def create_hud(self):
         board = pyglet.resource.image('board.png')
         self.board = pyglet.sprite.Sprite(
             board,
@@ -2252,16 +2221,47 @@ class GameScreen(Screen):
             batch=self.batch,
             group=pyglet.graphics.OrderedGroup(2)
         )
-        self.show_hud = True
+
+    def display_big_text_and_wait(self, big_text):
+        self.complete_label = Label(
+            big_text,
+            x=window.width // 2,
+            y=window.height - 200,
+            font_name=BODY_FONT,
+            font_size=40,
+            anchor_x='center',
+            anchor_y='center',
+            color=(0, 0, 0, 255),
+            batch=self.batch,
+        )
+        self.any_key_label = Label(
+            "Press Space to continue",
+            x=window.width // 2,
+            y=window.height - 300,
+            font_name=BODY_FONT,
+            font_size=15,
+            anchor_x='center',
+            anchor_y='center',
+            color=IntroScreen.HIGHLIGHT_TEXT,
+            batch=self.batch
+        )
 
     def hud_text(self):
         plural = "" if (level.dams_remaining == 1) else "s"
         return f'{level.dams_remaining} dam{plural} remaining'
 
     def hide_hud(self):
-        self.show_hud = False
+        self.hud_label.delete()
+        self.hud_label = None
+        self.board.delete()
+        self.board = None
 
     def on_key_press(self, k, modifiers):
+        if k == key.SPACE:
+            if level.on_space_pressed:
+                level.on_space_pressed()
+                level.on_space_pressed = None
+
         if k == key.F5:
             reload_level()
             return
@@ -2291,9 +2291,9 @@ class GameScreen(Screen):
 
         scene.draw()
 
-        if self.show_hud:
+        if self.hud_label:
             self.hud_label.text = self.hud_text()
-            self.batch.draw()
+        self.batch.draw()
 
 
 def title_screen():
