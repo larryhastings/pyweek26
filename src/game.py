@@ -2547,19 +2547,20 @@ def title_screen():
         on_finished=lambda: BackStoryScreen(window, on_finished=lambda: start_game())
     )
 
-if len(sys.argv) > 1:
-    start_game(sys.argv[1])
-else:
-    title_screen()
+def main(argv=[]):
+    if len(argv):
+        start_game(argv[0])
+    else:
+        title_screen()
 
+    pygame.mixer.music.play(loops=-1)
 
-pygame.mixer.music.play(loops=-1)
+    try:
+        pyglet.app.run()
+    except AssertionError as e:
+        log(f"\n{e}")
+        raise e
 
+if __name__ == "__main__":
+    main(sys.argv[1:])
 
-try:
-    pyglet.app.run()
-except AssertionError as e:
-    log(f"\n{e}")
-    raise e
-
-# dump_log()
