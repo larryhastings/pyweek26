@@ -22,3 +22,4 @@ R MapGrass + Scenery.factory('rock')
 :title: The Lake
 :author: mauve
 :hint: When the water doesn't move - get creative
+:next: level5.txt

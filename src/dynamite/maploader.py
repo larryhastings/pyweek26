@@ -8,7 +8,10 @@ from .vec2d import Vec2D
 from .coords import TILES_W, TILES_H
 
 
-Map = namedtuple('Map', 'name width height tiles mtime legend_mtime metadata')
+Map = namedtuple('Map', 'name next width height tiles mtime legend_mtime metadata')
+
+# list of strings, separated by spaces
+required_level_metadata = "next"
 
 
 class MapFormatError(Exception):
@@ -64,6 +67,8 @@ def load_map(filename, globals_=globals()):
         legend_mtime = os.fstat(f.fileno()).st_mtime
         legend = load_legend(legend_filename, enumerated_text(f.read()))
 
+    if not filename.endswith(".txt"):
+        filename += ".txt"
     with pyglet.resource.file(filename, 'rt') as f:
         mtime = os.fstat(f.fileno()).st_mtime
         map_text = f.read()
@@ -93,6 +98,10 @@ def load_map(filename, globals_=globals()):
                 )
             metadata[k] = v
             lastk = k
+
+    for s in required_level_metadata.split():
+        if s not in metadata:
+            raise MapFormatError(f"Required metadata key {s!r} not found")
 
     # the map is currently map[y][x].
     # now rotate map so x is first instead of y.
@@ -129,6 +138,7 @@ def load_map(filename, globals_=globals()):
 
     return Map(
         name=filename.replace('.txt', ''),
+        next=metadata['next'],
         width=map_width,
         height=map_height,
         tiles=new_map,

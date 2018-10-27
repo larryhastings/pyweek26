@@ -24,3 +24,4 @@ R MapGrass + Scenery.factory('rock')
 :title: Bouncing bombs
 :author: mauve
 :hint: Hop skip and boom
+:next: level4.txt

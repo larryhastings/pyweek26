@@ -25,3 +25,4 @@ R MapGrass + Scenery.factory('rock')
 :title: All that way
 :author: mauve
 :hint: Sometimes timing is very important
+:next: level6.txt

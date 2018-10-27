@@ -457,12 +457,16 @@ class Game:
             return send_message(self.key_handler, "on_key", k)
 
 
+level_serial_number = 0
+
 class Level:
     DEFAULT = MapOOB
     loading = True
+    suppress_esc = False
 
     def set_map(self, map_data):
         self.map = map_data.tiles
+        self.next = map_data.next
         self.width = map_data.width
         self.height = map_data.height
         self.tile_occupant = collections.defaultdict(None.__class__)
@@ -485,7 +489,10 @@ class Level:
             raise Exception("No player position set!")
 
     def __init__(self):
-        self.serial_number = level_number
+        global level_serial_number
+        self.serial_number = level_serial_number
+        level_serial_number += 1
+
         self.start = time.time()
         self.player = None
         self.dams_remaining = 0
@@ -515,31 +522,36 @@ class Level:
             self.complete()
 
     def complete(self):
-        log(f"{self} level finished")
-        game_screen.hide_hud()
-
-        try:
-            with pyglet.resource.file(_next_level_filename(), 'rt') as f:
-                pass
-        except pyglet.resource.ResourceNotFoundException:
+        if self.next == "finished":
             return self.game_won()
 
-        game_screen.show_level_complete()
+        log(f"{self} level finished")
+        game_screen.hide_hud()
+        game_screen.display_big_text_and_wait("LEVEL COMPLETE!")
+        game_screen.show_congratulations_bubble()
+        self.suppress_esc = True
         self.on_space_pressed = next_level
 
     def player_died(self):
         log(f"{self} player was harmed")
-        game_screen.show_death_msg()
+        game_screen.display_big_text_and_wait("OOPS!")
+        game_screen.show_oops_bubble()
+        self.suppress_esc = True
         self.on_space_pressed = reload_level
 
     def game_won(self):
         log(f"{self} you win!")
+        game_screen.hide_hud()
         game_screen.display_big_text_and_wait("YOU WON!")
+        game_screen.show_congratulations_bubble()
+        self.suppress_esc = True
         self.on_space_pressed = title_screen
         # game.key_handler = self
         # GameWonScreen(window, on_finished=title_screen)
 
     def pause(self):
+        if self.suppress_esc:
+            return
         if game.paused:
             return
         log(f"{self} Pausing game.")
@@ -2184,25 +2196,17 @@ def start_game_screen():
     game_screen = GameScreen(window)
     game.unpause()
 
-level_number = None
-level_set = None
 
-def start_game(_level_set, start_level=1):
-    global level_number
-    global level_set
-    level_number = start_level - 1
-    level_set = _level_set
-    next_level()
+def start_game(filename="level1"):
+    start_level(filename)
 
 def _next_level_filename():
     return level_set.format(number=level_number + 1)
 
 def next_level():
-    global level_number
-    if level_number is None:
-        sys.exit("You played your one level.  Now git!")
-    level_number += 1
-    start_level(level_set.format(number=level_number))
+    assert level
+    assert level.next
+    start_level(level.next)
 
 def start_level(filename):
     """Start the level with the given filename."""
@@ -2222,12 +2226,7 @@ def start_level(filename):
 
     log(f"loading level {filename}")
 
-    try:
-        map = load_map(filename, globals())
-    except pyglet.resource.ResourceNotFoundException:
-        # end of level set! you win!
-        level.game_won()
-        return
+    map = load_map(filename, globals())
 
     level.set_map(map)
     level.name = filename
@@ -2347,8 +2346,7 @@ class GameScreen(Screen):
             group=pyglet.graphics.OrderedGroup(2)
         )
 
-    def show_death_msg(self):
-        self.display_big_text_and_wait("YOU DIED!")
+    def show_oops_bubble(self):
         self.bubble = pyglet.sprite.Sprite(
             self.sprites['bubble-death'],
             x=self.window.width - 30,
@@ -2358,8 +2356,18 @@ class GameScreen(Screen):
         self.bubble.visible = False
         self.clock.schedule_once(self._show_bubble, 0.5)
 
-    def show_level_complete(self):
-        game_screen.display_big_text_and_wait("LEVEL COMPLETE!")
+    def show_congratulations_bubble(self):
+        self.bubble = pyglet.sprite.Sprite(
+            self.sprites['bubble-win'],
+            x=30,
+            y=30,
+            batch=self.batch,
+        )
+        self.bubble.visible = False
+        self.clock.schedule_once(self._show_bubble, 0.5)
+
+    def show_game_won(self):
+        # game_screen.display_big_text_and_wait("YOU WON!")
         self.bubble = pyglet.sprite.Sprite(
             self.sprites['bubble-win'],
             x=30,
@@ -2433,7 +2441,11 @@ class GameScreen(Screen):
             return self.handle_big_text_callback("on_space_pressed")
 
         if k == key.ESCAPE:
-            log("GameScreen handle pause")
+            if level.suppress_esc:
+                log(f"{self} Ignoring ESC")
+                return
+
+            log(f"{self} GameScreen handle pause")
             if not game.paused:
                 log("Pausing")
                 level.pause()
@@ -2487,21 +2499,14 @@ class GameScreen(Screen):
 
 
 def title_screen():
-    # note: NOT AN F STRING
-    # this is LAZILY COMPUTED when NUMBER changes
-    level_set ='level{number}.txt'
+    first_level ='level1.txt'
     TitleScreen(
         window,
-        on_finished=lambda: BackStoryScreen(window, on_finished=lambda: start_game(level_set))
+        on_finished=lambda: BackStoryScreen(window, on_finished=lambda: start_game())
     )
 
 if len(sys.argv) > 1:
-    try:
-        level_number = int(sys.argv[-1])
-    except ValueError:
-        pass
-    else:
-        start_game('level{number}.txt', level_number)
+    start_game(sys.argv[1])
 else:
     title_screen()
 

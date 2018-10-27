@@ -23,3 +23,4 @@ R MapGrass + Scenery.factory('rock')
 :title: Moving Water
 :author: mauve
 :hint: Floating bombs can be stepped on!
+:next: level3.txt
