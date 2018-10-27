@@ -2418,6 +2418,15 @@ else:
     # this is LAZILY COMPUTED when NUMBER changes
     title_screen()
 
+
+def play_ambient(dt=0):
+    ambient = pyglet.resource.media('ambient.mp3', streaming=True)
+    ambient.play()
+
+play_ambient()
+pyglet.clock.schedule_interval(play_ambient, 150.752)
+
+
 try:
     pyglet.app.run()
 except AssertionError as e:
