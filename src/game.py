@@ -485,9 +485,9 @@ class Level:
         if not self.dams_remaining:
             self.complete()
 
-    def complete(self):
+    def display_big_text_and_wait(self, big_text):
         self.complete_label = Label(
-            "LEVEL COMPLETE!",
+            big_text,
             x=window.width // 2,
             y=window.height - 200,
             font_name=BODY_FONT,
@@ -496,6 +496,7 @@ class Level:
             anchor_y='center',
             color=(0, 0, 0, 255),
             batch=scene.level_renderer.batch,
+            group=pyglet.graphics.OrderedGroup(2)
         )
         self.any_key_label = Label(
             "Press Space to continue",
@@ -507,12 +508,24 @@ class Level:
             anchor_y='center',
             color=IntroScreen.HIGHLIGHT_TEXT,
             batch=scene.level_renderer.batch,
+            group=pyglet.graphics.OrderedGroup(2)
         )
         game.key_handler = self
 
+    def complete(self):
+        game_screen.hide_hud()
+        self.display_big_text_and_wait("LEVEL COMPLETE!")
+        self.on_space_pressed = next_level
+
+    def player_died(self):
+        self.display_big_text_and_wait("YOU DIED!")
+        self.on_space_pressed = reload_level
+
     def on_key_press(self, k):
         if k == key.SPACE:
-            next_level()
+            if self.on_space_pressed:
+                self.on_space_pressed()
+                self.on_space_pressed = None
 
 class Animator:
     def __init__(self, clock):
@@ -1046,6 +1059,7 @@ key_to_orientation = {
 
 class Player(Entity):
     MAX_BOMBS = 2
+    dead = False
 
     def __init__(self, position):
         super().__init__(position)
@@ -1053,7 +1067,6 @@ class Player(Entity):
         game.key_handler = self
 
         self.actor = scene.spawn_player(position)
-        self.dead = False
 
         # what should be the player's initial orientation?
         # it doesn't really matter.  let's pick something cromulent.
@@ -1085,13 +1098,18 @@ class Player(Entity):
 
         self.new_position = self.new_platform = None
 
+    def on_died(self):
+        if not self.dead:
+            self.dead = True
+            level.player_died()
+
     def on_blasted(self, bomb, position):
         if not self.dead:
             if self.standing_on is bomb:
                 self.drown()
             else:
                 self.actor.play('pc-smouldering')
-                self.dead = True
+                self.on_died()
 
     def drown(self):
         if not self.dead:
@@ -1099,7 +1117,7 @@ class Player(Entity):
             self.actor.delete()
             self.remove()
             DrowningPC(position)
-            self.dead = True
+            self.on_died()
 
     def push_bomb(self, bomb):
         """Pick up a bomb."""
@@ -2130,6 +2148,10 @@ class GameScreen(Screen):
     def hud_text(self):
         plural = "" if (level.dams_remaining == 1) else "s"
         return f'{level.dams_remaining} dam{plural} remaining'
+
+    def hide_hud(self):
+        # WAAAAH WHY AM I EMPTY
+        pass
 
     def on_key_press(self, k, modifiers):
         if k == key.F5:
