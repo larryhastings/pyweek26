@@ -6,6 +6,7 @@ from pyglet.event import EVENT_HANDLED
 from pyglet import clock
 from pyglet import gl
 from pyglet.text import Label
+import pyglet.window.key as key
 
 from . import animation
 from .scene import AnchoredImg
@@ -319,3 +320,67 @@ class BackStoryScreen(Screen):
     def on_key_press(self, *_):
         self.clock.unschedule(self.next_bubble)
         self.next_bubble(0)
+
+class GameWonScreen(Screen):
+    SPRITES = [
+        AnchoredImg('dynamite-valley'),
+    ]
+
+    BGCOLOR = 0xaa / 255, 0x99 / 255, 0x82 / 255
+
+    def __init__(self, window, on_finished=None):
+        super().__init__(window, on_finished=on_finished)
+
+    def start(self):
+        self.title = pyglet.sprite.Sprite(
+            self.sprites['dynamite-valley'],
+            x=self.window.width // 2 - 100,
+            y=self.window.height - 80,
+            batch=self.batch,
+        )
+        self.title.scale_x = 0.3
+        self.title.scale_y = 0.5
+        self.clock.animate(
+            self.title,
+            'bounce_end',
+            duration=0.5,
+            scale_x=0.9,
+            scale_y=0.9,
+        )
+
+        self.you_won_label = Label(
+            "YOU WIN!",
+            x=self.window.width // 2,
+            y=self.window.height - 200,
+            font_name=BODY_FONT,
+            font_size=30,
+            anchor_x='center',
+            anchor_y='center',
+            color=(0, 0, 0, 255),
+            batch=self.batch,
+        )
+
+        self.any_key_label = Label(
+            "Press any key to continue",
+            x=self.window.width // 2,
+            y=100,
+            font_name=BODY_FONT,
+            font_size=20,
+            anchor_x='center',
+            anchor_y='center',
+            color=(255, 255, 255, 0),
+            batch=self.batch,
+            group=pyglet.graphics.OrderedGroup(1),
+        )
+
+    HIGHLIGHT_TEXT = 0x51, 0x3a, 0x1b, 255
+
+
+    def on_key_press(self, k, modifiers):
+        self.log(f"on_key_press {k} {modifiers}")
+        if k == key.SPACE:
+            self.end()
+
+    def on_mouse_press(self, *args):
+        # TODO: only when you click the bomb
+        self.end()

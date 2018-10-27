@@ -26,7 +26,7 @@ import dynamite.scene
 from dynamite.maploader import load_map
 from dynamite.vec2d import Vec2D
 from dynamite.animation import animate as tween
-from dynamite.titles import TitleScreen, Screen, IntroScreen, BackStoryScreen
+from dynamite.titles import TitleScreen, Screen, IntroScreen, BackStoryScreen, GameWonScreen
 from dynamite.titles import BODY_FONT
 
 TITLE = "Dynamite Valley"
@@ -514,12 +514,27 @@ class Level:
 
     def complete(self):
         game_screen.hide_hud()
+
+        try:
+            with pyglet.resource.file(_next_level_filename(), 'rt') as f:
+                pass
+        except pyglet.resource.ResourceNotFoundException:
+            return self.game_won()
+
         self.display_big_text_and_wait("LEVEL COMPLETE!")
         self.on_space_pressed = next_level
+
 
     def player_died(self):
         self.display_big_text_and_wait("YOU DIED!")
         self.on_space_pressed = reload_level
+
+    def game_won(self):
+        log("you win!")
+        self.display_big_text_and_wait("YOU WON!")
+        self.on_space_pressed = title_screen
+        # game.key_handler = self
+        # GameWonScreen(window, on_finished=title_screen)
 
     def on_key_press(self, k):
         if k == key.SPACE:
@@ -2029,6 +2044,9 @@ def start_game(_level_set):
     level_set = _level_set
     next_level()
 
+def _next_level_filename():
+    return level_set.format(number=level_number + 1)
+
 def next_level():
     global level_number
     if level_number is None:
@@ -2053,7 +2071,12 @@ def start_level(filename):
 
     log(f"loading level {filename}")
 
-    map = load_map(filename, globals())
+    try:
+        map = load_map(filename, globals())
+    except pyglet.resource.ResourceNotFoundException:
+        # end of level set! you win!
+        level.game_won()
+        return
 
     level.set_map(map)
     level.name = filename
@@ -2187,6 +2210,13 @@ class GameScreen(Screen):
         self.batch.draw()
 
 
+def title_screen():
+    level_set ='level{number}.txt'
+    TitleScreen(
+        window,
+        on_finished=lambda: BackStoryScreen(window, on_finished=lambda: start_game(level_set))
+    )
+
 if len(sys.argv) > 1:
     fname = sys.argv[-1]
     if not fname.startswith('-'):
@@ -2194,11 +2224,7 @@ if len(sys.argv) > 1:
 else:
     # note: NOT AN F STRING
     # this is LAZILY COMPUTED when NUMBER changes
-    level_set ='level{number}.txt'
-    TitleScreen(
-        window,
-        on_finished=lambda: BackStoryScreen(window, on_finished=lambda: start_game(level_set))
-    )
+    title_screen()
 
 try:
     pyglet.app.run()
