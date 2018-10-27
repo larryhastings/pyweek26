@@ -2252,14 +2252,14 @@ class GameScreen(Screen):
             batch=self.batch,
             group=pyglet.graphics.OrderedGroup(2)
         )
+        self.show_hud = True
 
     def hud_text(self):
         plural = "" if (level.dams_remaining == 1) else "s"
         return f'{level.dams_remaining} dam{plural} remaining'
 
     def hide_hud(self):
-        # WAAAAH WHY AM I EMPTY
-        pass
+        self.show_hud = False
 
     def on_key_press(self, k, modifiers):
         if k == key.F5:
@@ -2291,8 +2291,9 @@ class GameScreen(Screen):
 
         scene.draw()
 
-        self.hud_label.text = self.hud_text()
-        self.batch.draw()
+        if self.show_hud:
+            self.hud_label.text = self.hud_text()
+            self.batch.draw()
 
 
 def title_screen():
@@ -2303,9 +2304,12 @@ def title_screen():
     )
 
 if len(sys.argv) > 1:
-    fname = sys.argv[-1]
-    if not fname.startswith('-'):
-        start_level(fname)
+    try:
+        level_number = int(sys.argv[-1])
+    except ValueError:
+        pass
+    else:
+        start_game('level{number}.txt')
 else:
     # note: NOT AN F STRING
     # this is LAZILY COMPUTED when NUMBER changes
