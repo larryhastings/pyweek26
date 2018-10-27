@@ -12,11 +12,11 @@ import math
 import copy
 
 from pyglet import clock, gl
+from pyglet.text import Label
 import pyglet.image
 import pyglet.resource
-from pyglet.text import Label
-import pyglet.window.key as key
 import pyglet.window.key
+import pyglet.window.key as key
 
 from dynamite import coords
 from dynamite.coords import map_to_screen
@@ -2103,8 +2103,33 @@ class GameScreen(Screen):
         self.wall = pyglet.sprite.Sprite(
             pyglet.resource.image('canyon-wall.png'),
             x=0,
-            y=self.window.height - 100
+            y=self.window.height - 100,
         )
+
+        board = pyglet.resource.image('board.png')
+        self.board = pyglet.sprite.Sprite(
+            board,
+            x=10,
+            y=self.window.height - 10 - board.height,
+            batch=self.batch,
+            group=pyglet.graphics.OrderedGroup(1),
+        )
+        self.hud_label = Label(
+            self.hud_text(),
+            x=board.width // 2 + 10,
+            y=self.board.y + 11,
+            font_name=BODY_FONT,
+            font_size=20,
+            anchor_x='center',
+            anchor_y='bottom',
+            color=(0, 0, 0, 255),
+            batch=self.batch,
+            group=pyglet.graphics.OrderedGroup(2)
+        )
+
+    def hud_text(self):
+        plural = "" if (level.dams_remaining == 1) else "s"
+        return f'{level.dams_remaining} dam{plural} remaining'
 
     def on_key_press(self, k, modifiers):
         if k == key.F5:
@@ -2135,6 +2160,9 @@ class GameScreen(Screen):
             return
 
         scene.draw()
+
+        self.hud_label.text = self.hud_text()
+        self.batch.draw()
 
 
 if len(sys.argv) > 1:
