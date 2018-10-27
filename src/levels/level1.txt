@@ -15,7 +15,7 @@ B^#....d....
 Legend
 L MapWaterCurrentLeft + Log
 X MapWaterCurrentUp + Dam
-C MapGrass + Dispenser.factory(FreezeBomb)
+C MapGrass + Dispenser.factory(TimedBomb)
 ! MapGrass + TimedBomb.factory(lit=False)
 1 MapWaterCurrentRight + TimedBomb
 2 MapWaterCurrentUp + TimedBomb

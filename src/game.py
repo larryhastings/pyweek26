@@ -1850,21 +1850,32 @@ class TimedBomb(Bomb):
         super().__init__(position)
 
         self.start_time = game.logics.counter
-        self.lit = lit
+        self.lit = False
         if lit:
-            self.red_timer = Timer("bomb toggle red", game.logics, self.interval * 0.5, self.toggle_red)
-            self.detonate_timer = Timer("bomb detonate", game.logics, self.interval, self.detonate)
+            self.light_fuse()
 
-            sx, sy = (20, 27) if self.floating else (18, 35)
-            self.spark = self.actor.attach(
-                dynamite.scene.Bomb.sprites['spark'],
-                x=sx,
-                y=sy,
-            )
-            self.spark.scale = 0.5
-            self.spark.color = self.SPARK_COLOR
-            self.t = 0
-            clock.schedule(self.update_spark)
+    def light_fuse(self):
+        if self.lit:
+            return
+        self.red_timer = Timer("bomb toggle red", game.logics, self.interval * 0.5, self.toggle_red)
+        self.detonate_timer = Timer("bomb detonate", game.logics, self.interval, self.detonate)
+
+        sx, sy = (20, 27) if self.floating else (18, 35)
+        self.spark = self.actor.attach(
+            dynamite.scene.Bomb.sprites['spark'],
+            x=sx,
+            y=sy,
+        )
+        self.spark.scale = 0.5
+        self.spark.color = self.SPARK_COLOR
+        self.t = 0
+        clock.schedule(self.update_spark)
+        self.lit = True
+
+    def on_blasted(self, bomb, position):
+        """If blasted, the fuse get lit!"""
+        super().on_blasted(bomb, position)
+        self.light_fuse()
 
     def interact(self, player):
         if not self.lit:
