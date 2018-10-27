@@ -75,6 +75,7 @@ fling_movement_logics = logics_per_second / 10
 freeze_detonation_interval = 2 * logics_per_second
 freeze_timer_logics = 5 * logics_per_second
 
+
 srcdir = Path(__file__).parent
 pyglet.resource.path = [
     'images',
@@ -2540,11 +2541,18 @@ class GameScreen(Screen):
         self.batch.draw()
 
 
+def title_screen_finished():
+    global title_screen
+    next_level = title_screen.next_level
+    title_screen = None
+    BackStoryScreen(window, on_finished=lambda: start_game(next_level))
+
+
 def title_screen():
-    first_level ='level1.txt'
-    TitleScreen(
+    global title_screen
+    title_screen = TitleScreen(
         window,
-        on_finished=lambda: BackStoryScreen(window, on_finished=lambda: start_game())
+        on_finished=title_screen_finished
     )
 
 def main(argv=[]):
