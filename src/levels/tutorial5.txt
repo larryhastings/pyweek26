@@ -20,4 +20,4 @@ F MapGrass + Dispenser.factory(FreezeBomb)
 :title: Freeze Bombs
 :author: larry
 :hint: Freeze bombs freeze the timer on a bomb!
-:next: finished
+:next: tutorial6
