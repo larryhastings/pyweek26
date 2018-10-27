@@ -718,6 +718,11 @@ class Entity:
                 new_occupant = level.tile_occupant[old_position]
                 assert (new_occupant == e) or (e.claim and new_occupant == e.claim), f"(new_occupant {new_occupant} == e {e}) or (e.claim {e.claim} and new_occupant {new_occupant} == e.claim {e.claim})"
 
+        self.on_position_changed()
+
+    def on_position_changed(self):
+        pass
+
     def fling(self, delta):
         """
         This pawn has been flung across the map!
@@ -1390,6 +1395,7 @@ class FloatingPlatform(Entity):
 
         tile = level.get(self.position)
         self.is_platform = self.floating = tile.water
+        self.on_position_changed()
 
         log(f"{self} placed at {self.position}, tile is {tile}. is it moving water? {tile.moving_water}")
 
@@ -1500,7 +1506,6 @@ class FloatingPlatform(Entity):
 
         super().on_fling_completed()
         log(f"just checking! {self} .fling is {self._fling}")
-        self.floating = level.get(self.position).water
         if not standing_on:
             log(f"{self} was flung, and has now landed at {fling.destination}.")
             self.animate_if_on_moving_water()
@@ -1531,15 +1536,23 @@ class Bomb(FloatingPlatform):
     blast_pattern = blast_pattern_1
     detonated = False
     can_be_pushed_from_water_to_land = True
+    actor = None
 
     def __init__(self, position):
         super().__init__(position)
 
         self.actor.z = 50
-        tween(self.actor, 'accelerate', duration=0.2, on_finished=self.on_bomb_land, z=0)
+        tween(self.actor, 'accelerate', duration=0.2, on_finished=self.on_position_changed, z=0)
 
     def make_actor(self):
         self.actor = scene.spawn_bomb(self.position, self.sprite_name)
+
+    def on_position_changed(self):
+        suffix = "-float" if self.floating else ""
+        if self.actor:
+            sprite_name = f'{self.sprite_name}{suffix}'
+            log(f"{self} now playing {sprite_name}")
+            self.actor.play(sprite_name)
 
     def interact(self, player):
         """Allow the player to pick up the bomb.
@@ -1571,10 +1584,6 @@ class Bomb(FloatingPlatform):
             log(f"{self} withdrawing claim after level loaded, {claim_position} occupied by {occupant_at_claim}")
             self.claim._position = None
             self.queue_for_tile(claim_position)
-
-    def on_bomb_land(self):
-        if self.floating:
-            self.actor.play(f'{self.sprite_name}-float')
 
     def detonate(self):
         if self.detonated:
