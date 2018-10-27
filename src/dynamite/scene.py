@@ -303,6 +303,8 @@ class Player(Actor):
         walk('pc-holding-walk-down', anchor_y=19),
         walk('pc-holding-walk-right'),
         walk('pc-holding-walk-left', flip_x_from='pc-holding-walk-right'),
+        'pc-frozen',
+        'pc-frozen-floating',
         ImageSequence(
             'pc-smouldering',
             anchor_y=10,

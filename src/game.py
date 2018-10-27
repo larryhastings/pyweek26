@@ -17,6 +17,11 @@ import pyglet.resource
 import pyglet.window.key
 import pyglet.window.key as key
 
+import pygame.mixer
+pygame.mixer.pre_init(frequency=44100, size=-16, channels=2)
+pygame.mixer.init()
+
+
 from dynamite import coords
 from dynamite.particles import FlowParticles
 from dynamite.level_renderer import LevelRenderer
@@ -72,28 +77,16 @@ pyglet.resource.path = [
 pyglet.resource.reindex()
 pyglet.resource.add_font('edo.ttf')
 
+
+def load_sound(name):
+    return pygame.mixer.Sound(str(srcdir / 'sounds' / f'{name}.wav'))
+
+
+pygame.mixer.music.load(str(srcdir / 'sounds' / 'ambient.mp3'))
+
+
 LevelRenderer.load()
 FlowParticles.load()
-
-cant_play_audio = False
-
-class SafePlayer:
-    def __init__(self, *a, **k):
-        self.player = None
-        try:
-            self.media = pyglet.resource.media(*a, **k)
-        except pyglet.media.sources.riff.WAVEFormatException:
-            global cant_play_audio
-            cant_play_audio = True
-            self.media = None
-
-    def play(self):
-        if self.media:
-            self.player = self.media.play()
-
-    def pause(self):
-        if self.player:
-            self.player.pause()
 
 
 remapped_keys = {
@@ -959,7 +952,7 @@ class Entity:
             else:
                 position = self.actor.position
             log(f"{self} occupant {self.occupant}, by transitivity, has also been frozen. (at position {position})")
-            self.occupant.on_frozen(self, bomb, position)
+            self.occupant.on_frozen(bomb, position)
 
     def set_freeze_timer(self, callback):
         if self.freeze_timer:
@@ -1188,6 +1181,14 @@ class Player(Entity):
                 )
             level.player_died()
 
+    def on_frozen(self, bomb, position):
+        if not self.dead:
+            if self.standing_on is bomb:
+                self.drown(frozen=True)
+            else:
+                self.actor.play('pc-frozen')
+                self.on_died()
+
     def on_blasted(self, bomb, position):
         if not self.dead:
             if self.standing_on is bomb:
@@ -1196,13 +1197,13 @@ class Player(Entity):
                 self.actor.play('pc-smouldering')
                 self.on_died()
 
-    def drown(self):
+    def drown(self, frozen=False):
         if not self.dead:
             position = self.position
             self.on_died()
             self.actor.delete()
             self.remove()
-            DrowningPC(position)
+            DrowningPC(position, frozen=frozen)
 
     def push_bomb(self, bomb):
         """Pick up a bomb."""
@@ -1339,8 +1340,8 @@ class Player(Entity):
         log(f"{self} can {verb} space!  it's navigable, and current occupant is {occupant}.")
         return True
 
-    thud = SafePlayer('thud.wav', streaming=False)
-    splash = SafePlayer('splash.wav', streaming=False)
+    thud = load_sound('thud')
+    splash = load_sound('splash')
 
     def on_key(self, k):
         log(f"{self} on key {key_repr(k)}")
@@ -1795,8 +1796,12 @@ class Log(FloatingPlatform):
 
 
 class DrowningPC(Log):
+    def __init__(self, position, frozen=False):
+        self.sprite_name = 'pc-frozen-floating' if frozen else 'pc-drowning'
+        super().__init__(position)
+
     def make_actor(self):
-        self.actor = scene.spawn_player(self.position, 'pc-drowning')
+        self.actor = scene.spawn_player(self.position, self.sprite_name)
 
 
 class Bomb(FloatingPlatform):
@@ -1925,7 +1930,7 @@ class Bomb(FloatingPlatform):
             standing_on.occupant = None
             standing_on = None
 
-    explosion = SafePlayer('explosion2.wav', streaming=False)
+    explosion = load_sound('explosion2')
 
     def detonation_effects(self):
         self.explosion.play()
@@ -2511,28 +2516,7 @@ else:
     title_screen()
 
 
-ambient = None
-def load_ambient():
-    global ambient
-    if ambient is None:
-        ambient = SafePlayer('ambient.mp3', streaming=True)
-
-def play_ambient(dt=0):
-    global ambient
-    if ambient is not None:
-        ambient.play()
-
-def stop_ambient():
-    global ambient
-    if ambient is not None:
-        _ambient = ambient
-        ambient = None
-        _ambient.pause()
-        del _ambient
-
-load_ambient()
-play_ambient()
-pyglet.clock.schedule_interval(play_ambient, 150.752)
+pygame.mixer.music.play(loops=-1)
 
 
 try:
