@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import collections
 import datetime
 from enum import Enum, IntEnum
@@ -19,7 +18,6 @@ import pyglet.window.key
 import pyglet.window.key as key
 
 from dynamite import coords
-from dynamite.coords import map_to_screen
 from dynamite.particles import FlowParticles
 from dynamite.level_renderer import LevelRenderer
 import dynamite.scene
@@ -1806,6 +1804,7 @@ class Bomb(FloatingPlatform):
             self.animator.cancel()
         self.unqueue_for_tile()
         self.actor.scene.spawn_explosion(self.actor.position)
+        game_screen.screen_shake()
         self.actor.delete()
         self.remove()  # Remove ourselves before processing on_blasted
         # t = Timer(f"bomb {self} detonation", game.logics, exploding_bomb_interval, self.remove)
@@ -1970,6 +1969,8 @@ class FreezeBomb(TimedBomb):
             self.animator.cancel()
         self.unqueue_for_tile()
         self.actor.scene.spawn_explosion(self.actor.position, freeze=True)
+        game_screen.screen_shake()
+
         self.actor.delete()
         self.remove()  # Remove ourselves before processing on_blasted
         # t = Timer(f"bomb {self} detonation", game.logics, exploding_bomb_interval, self.remove)
@@ -2218,17 +2219,36 @@ pyglet.clock.schedule_interval(timer_callback, callback_interval)
 
 class GameScreen(Screen):
     SPRITES = [
-        dynamite.scene.AnchoredImg('canyon-wall', anchor_x=0, anchor_y=0),
+        dynamite.scene.AnchoredImg('canyon-wall', anchor_x=25, anchor_y=25),
         dynamite.scene.AnchoredImg('bubble-win', anchor_x=0, anchor_y=0),
         dynamite.scene.AnchoredImg('bubble-death', anchor_x=353, anchor_y=0),
     ]
+
     def start(self):
+        self.cam_offset = Vec2D(0, 0)
+        self.cam_vel = Vec2D(0, 0)
         self.wall = pyglet.sprite.Sprite(
             self.sprites['canyon-wall'],
             x=0,
             y=self.window.height - 100,
         )
         self.create_hud()
+        self.clock.schedule(self.steady_cam)
+
+    def screen_shake(self):
+        angle = random.uniform(0, math.tau)
+
+        dist = 25
+        vx = dist * math.sin(angle)
+        vy = dist * math.cos(angle)
+        self.cam_offset = Vec2D(vx, vy)
+
+    def steady_cam(self, dt):
+        dt = 0.05  # guarantee stable behaviour
+        self.cam_offset += self.cam_vel * dt
+        self.cam_vel -= self.cam_offset * 300 * dt
+        self.cam_vel *= 0.1 ** dt
+        self.cam_offset *= 0.01 ** dt
 
     def create_hud(self):
         board = pyglet.resource.image('board.png')
@@ -2341,6 +2361,11 @@ class GameScreen(Screen):
 
     def on_draw(self):
         gl.glClearColor(66 / 255, 125 / 255, 193 / 255, 0)
+        gl.glMatrixMode(gl.GL_MODELVIEW_MATRIX)
+        gl.glPushMatrix()
+
+        x, y = self.cam_offset
+        gl.glTranslatef(round(x), round(y), 0)
         window.clear()
 
         scene.flow.draw()
@@ -2352,6 +2377,7 @@ class GameScreen(Screen):
             return
 
         scene.draw()
+        gl.glPopMatrix()
 
         if self.hud_label:
             self.hud_label.text = self.hud_text()
