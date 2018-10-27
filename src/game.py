@@ -79,6 +79,7 @@ cant_play_audio = False
 
 class SafePlayer:
     def __init__(self, *a, **k):
+        self.player = None
         try:
             self.media = pyglet.resource.media(*a, **k)
         except pyglet.media.sources.riff.WAVEFormatException:
@@ -88,7 +89,11 @@ class SafePlayer:
 
     def play(self):
         if self.media:
-            self.media.play()
+            self.player = self.media.play()
+
+    def pause(self):
+        if self.player:
+            self.player.pause()
 
 
 remapped_keys = {
@@ -407,7 +412,6 @@ class Game:
             # log(f"logics {self.logics} advance by dt {dt}")
             self.logics.advance(dt)
 
-
     def transition_to(self, new_state):
         self.state = new_state
         _, _, name = str(new_state).rpartition(".")
@@ -415,6 +419,16 @@ class Game:
 
     def logic(self):
         pass
+
+    def pause(self):
+        if self.paused:
+            return
+        self.paused = True
+
+    def unpause(self):
+        if not self.paused:
+            return
+        self.paused = False
 
     def on_key_press(self, k, modifier):
         k = interesting_key(k)
@@ -476,7 +490,7 @@ class Level:
         self.dams_remaining = 0
 
     def __repr__(self):
-        return f'<Level #{serial_number}>'
+        return f'<Level #{self.serial_number}>'
 
     def get(self, pos):
         return self.map.get(pos) or self.DEFAULT
@@ -500,6 +514,7 @@ class Level:
             self.complete()
 
     def complete(self):
+        log(f"{self} level finished")
         game_screen.hide_hud()
 
         try:
@@ -512,15 +527,32 @@ class Level:
         self.on_space_pressed = next_level
 
     def player_died(self):
+        log(f"{self} player was harmed")
         game_screen.show_death_msg()
         self.on_space_pressed = reload_level
 
     def game_won(self):
-        log("you win!")
+        log(f"{self} you win!")
         game_screen.display_big_text_and_wait("YOU WON!")
         self.on_space_pressed = title_screen
         # game.key_handler = self
         # GameWonScreen(window, on_finished=title_screen)
+
+    def pause(self):
+        if game.paused:
+            return
+        log(f"{self} Pausing game.")
+        self.on_esc_pressed = self.unpause
+        self.on_y_pressed = title_screen
+        game.pause()
+        game_screen.display_big_text_and_wait("PAUSED", "Abort game? Press Esc to resume game, press Y to abort game.")
+
+    def unpause(self):
+        if not game.paused:
+            return
+        game.unpause()
+
+
 
 
 class Animator:
@@ -1300,10 +1332,11 @@ class Player(Entity):
     def on_key(self, k):
         log(f"{self} on key {key_repr(k)}")
 
-        if k == key.ESCAPE:
-            # pause / unpause
-            game.paused = not game.paused
-            return
+        # if k == key.ESCAPE:
+        #     # pause / unpause
+        #     if not game.paused:
+        #         level.pause()
+        #     return pyglet.event.EVENT_HANDLED
 
         if k == key.L:
             # log!  that's all L does.
@@ -2334,7 +2367,7 @@ class GameScreen(Screen):
             scale=1,
         )
 
-    def display_big_text_and_wait(self, big_text):
+    def display_big_text_and_wait(self, big_text, press_space="Press Space to continue"):
         self.complete_label = Label(
             big_text,
             x=window.width // 2,
@@ -2347,7 +2380,7 @@ class GameScreen(Screen):
             batch=self.batch,
         )
         self.any_key_label = Label(
-            "Press Space to continue",
+            press_space,
             x=window.width // 2,
             y=window.height - 300,
             font_name=BODY_FONT,
@@ -2368,11 +2401,38 @@ class GameScreen(Screen):
         self.board.delete()
         self.board = None
 
+    def handle_big_text_callback(self, name):
+        callback = getattr(level, name, None)
+        log(f"{self} CALLBACK for {name} is {callback}")
+        if not callback:
+            return None
+        if self.complete_label:
+            self.complete_label.delete()
+            self.complete_label = None
+        if self.any_key_label:
+            self.any_key_label.delete()
+            self.any_key_label = None
+        setattr(level, name, None)
+        return callback()
+
     def on_key_press(self, k, modifiers):
         if k == key.SPACE:
-            if level.on_space_pressed:
-                level.on_space_pressed()
-                level.on_space_pressed = None
+            log("Handling Space with big text")
+            return self.handle_big_text_callback("on_space_pressed")
+
+        if k == key.ESCAPE:
+            log("GameScreen handle pause")
+            if not game.paused:
+                log("Pausing")
+                level.pause()
+            else:
+                log("Handling esc with big text")
+                self.handle_big_text_callback("on_esc_pressed")
+            return pyglet.event.EVENT_HANDLED
+
+        if k == key.Y:
+            log("Handling Y with big text")
+            return self.handle_big_text_callback("on_y_pressed")
 
         if k == key.F5:
             reload_level()
@@ -2434,10 +2494,26 @@ else:
     title_screen()
 
 
-def play_ambient(dt=0):
-    ambient = SafePlayer('ambient.mp3', streaming=True)
-    ambient.play()
+ambient = None
+def load_ambient():
+    global ambient
+    if ambient is None:
+        ambient = SafePlayer('ambient.mp3', streaming=True)
 
+def play_ambient(dt=0):
+    global ambient
+    if ambient is not None:
+        ambient.play()
+
+def stop_ambient():
+    global ambient
+    if ambient is not None:
+        _ambient = ambient
+        ambient = None
+        _ambient.pause()
+        del _ambient
+
+load_ambient()
 play_ambient()
 pyglet.clock.schedule_interval(play_ambient, 150.752)
 
