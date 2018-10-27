@@ -27,4 +27,4 @@ R MapGrass + Scenery.factory('rock')
 :title: Dambusters
 :author: mauve
 :hint: Use bombs to smash the dams!
-:next: level2.txt
+:next: level1b.txt

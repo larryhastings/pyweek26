@@ -1,0 +1,30 @@
+rD..^...D...
+D...#C#.^...
+....####^>>D
+.!..####^...
+<<<<<r.>^>>D
+....rb.^....
+...r...^....
+tTT##t.^....
+rRtS###^>>>>
+T..###C^..d.
+....>>>^....
+............
+.........d..
+
+Legend
+L MapWaterCurrentLeft + Log
+X MapWaterCurrentUp + Dam
+D MapWater + Dam
+C MapGrass + Dispenser.factory(ContactBomb)
+! MapGrass + TimedBomb.factory(lit=False)
+1 MapWaterCurrentRight + TimedBomb
+2 MapWaterCurrentUp + TimedBomb
+r MapWater + Scenery.factory('bullrush')
+R MapGrass + Scenery.factory('rock')
+% MapWaterCurrentRight + Scenery.factory('bullrush')
+
+:title: River Rider
+:author: mauve
+:hint: Ol' Joe's bombs make fine rafts
+:next: level2.txt
