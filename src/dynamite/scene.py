@@ -1,5 +1,6 @@
 import math
 import random
+import copy
 
 from pyglet import gl
 from pyglet import clock
@@ -43,7 +44,7 @@ class Scene:
     def spawn_explosion(self, position):
         Explosion(self, position)
 
-    def spawn_particles(self, num, sprite_name, position, zrange, speed, vzrange, va, drag=0):
+    def spawn_particles(self, num, sprite_name, position, zrange, speed, vzrange, va, drag=1.0, gravity=-100):
         for _ in range(num):
             # Choose a random angle anywhere in the circle
             angle = random.uniform(0, math.tau)
@@ -66,16 +67,18 @@ class Scene:
                 z,
                 vz,
                 va,
-                drag
+                drag,
+                gravity
             )
 
 
 class AnchoredImg:
     """An image that can be loaded later."""
-    def __init__(self, name, anchor_x='center', anchor_y='center'):
+    def __init__(self, name, anchor_x='center', anchor_y='center', copy=True):
         self.name = name
         self.anchor_x = anchor_x
         self.anchor_y = anchor_y
+        self.copy = copy
 
     def _set_anchor(self, img):
         if self.anchor_x == 'center':
@@ -89,6 +92,8 @@ class AnchoredImg:
 
     def load(self):
         img = pyglet.resource.image(f'{self.name}.png')
+        if self.copy:
+            img = copy.copy(img)
         self._set_anchor(img)
         return img
 
@@ -371,17 +376,25 @@ class Static(Actor):
 class Particle(Actor):
     """3D-ish particle effects."""
     SPRITES = [
-        'timed-bomb',
-        'freeze-bomb',
-        'contact-bomb',
+        AnchoredImg('timed-bomb', anchor_x=21, anchor_y=21, copy=True),
+        AnchoredImg('freeze-bomb', anchor_x=21, anchor_y=21, copy=True),
+        AnchoredImg('contact-bomb'),
         AnchoredImg('leaf1', anchor_y=20),
         'leaf2',
         'twig',
     ]
 
-    GRAVITY = -100
-
-    def __init__(self, scene, position, sprite_name, vxy, z, vz, va, drag=0):
+    def __init__(
+            self,
+            scene,
+            position,
+            sprite_name,
+            vxy,
+            z,
+            vz,
+            va,
+            drag=1.0,
+            gravity=-100):
         super().__init__(scene, position, sprite_name)
         self.vxy = Vec2D(vxy)
         self.sprite.rotation = random.randrange(360)
@@ -389,16 +402,23 @@ class Particle(Actor):
         self.vz = vz
         self.va = va
         self.drag = drag
+        self.gravity = gravity
         self.scene.clock.schedule(self.update)
 
     def update(self, dt):
-        self.vz = self.vz * self.drag ** dt + self.GRAVITY * dt
+        self.vz = self.vz * self.drag ** dt + self.gravity * dt
         self.z += self.vz * dt
 
         if self.z < 0:
+            if 'bomb' in self.anim:
+                self.scene.spawn_explosion(self.position)
             self.delete()
             return
 
         self.vxy *= self.drag ** dt
         self.position += self.vxy * dt
         self.sprite.rotation += self.va * dt
+
+    def delete(self):
+        self.scene.clock.unschedule(self.update)
+        super().delete()

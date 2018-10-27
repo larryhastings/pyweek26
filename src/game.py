@@ -1147,6 +1147,19 @@ class Player(Entity):
     def on_died(self):
         if not self.dead:
             self.dead = True
+            pos = self.position
+            for i, b in enumerate(reversed(self.bombs)):
+                self.actor.detach(self.actor.attached[-1])
+                scene.spawn_particles(
+                    1,
+                    sprite_name=b.sprite_name,
+                    position=pos,
+                    speed=4,
+                    zrange=(80 + 20 * i,) * 2,
+                    vzrange=(-20, 100),
+                    va=300,
+                    gravity=-400,
+                )
             level.player_died()
 
     def on_blasted(self, bomb, position):
@@ -1160,10 +1173,10 @@ class Player(Entity):
     def drown(self):
         if not self.dead:
             position = self.position
+            self.on_died()
             self.actor.delete()
             self.remove()
             DrowningPC(position)
-            self.on_died()
 
     def push_bomb(self, bomb):
         """Pick up a bomb."""
