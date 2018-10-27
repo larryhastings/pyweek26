@@ -1160,6 +1160,7 @@ class Player(Entity):
             # trigger remote control bomb
             if level.player.remote_control_bombs:
                 bomb = level.player.remote_control_bombs.pop(0)
+                log(f"{self} detonating bomb {bomb}")
                 bomb.detonate()
             return
 
@@ -1179,6 +1180,7 @@ class Player(Entity):
                 return
             cls = level.player.pop_bomb()
             bomb = cls(bomb_position)
+            level.player.remote_control_bombs.append(bomb)
             if result is not True:
                 log(f"skipping bomb {bomb} across other bomb {result}")
                 delta = bomb_position - level.player.position
@@ -1607,6 +1609,9 @@ class Bomb(FloatingPlatform):
             return
         taken = player.push_bomb(type(self))
         if taken:
+            if isinstance(player, Player):
+                if self in player.remote_control_bombs:
+                    player.remote_control_bombs.remove(self)
             self.actor.delete()
             self.remove()
 
@@ -1833,11 +1838,6 @@ class ContactBomb(Bomb):
 
 class RemoteControlBomb(Bomb):
     sprite_name = 'timed-bomb'
-
-    def __init__(self, position):
-        super().__init__(position)
-        level.player.remote_control_bombs.append(self)
-
 
 
 class Scenery(Entity):
