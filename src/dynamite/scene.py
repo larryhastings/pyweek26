@@ -166,6 +166,8 @@ class Actor:
         return (self._pos[1], self._z)
 
     def play(self, name):
+        if not self.scene:
+            return
         self.sprite.image = self.sprites[name]
         self.anim = name
 
@@ -251,7 +253,14 @@ class Bomb(Actor):
         'timed-bomb-red',
         'freeze-bomb',
         'contact-bomb',
-        'contact-bomb-float',
+        ImageSequence(
+            'contact-bomb-float',
+            frames=2,
+            delay=1.1,
+            anchor_x='center',
+            anchor_y=18,
+            loop=True,
+        ),
         ImageSequence(
             'timed-bomb-float',
             frames=2,
