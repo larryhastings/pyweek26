@@ -1223,6 +1223,8 @@ class Player(Entity):
             self.on_key(k)
         if self.held_key:
             self.on_key(self.held_key)
+        if not self.dead and self.moving is PlayerAnimationState.STATIONARY:
+            self.actor.play(f'pc-{self.orientation.get_sprite()}')
 
     def cancel_start_moving(self):
         if self.start_moving_timer:
@@ -1377,6 +1379,7 @@ class Player(Entity):
         self.moving_to = new_position
         self.new_position = new_position
         self.starting_position = self.actor.position
+        self.actor.play(f'pc-walk-{self.orientation.get_sprite()}')
         self.animator.animate(
             self.actor, 'position',
             new_position,

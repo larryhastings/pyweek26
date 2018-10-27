@@ -87,7 +87,7 @@ class Scene:
 class AnchoredImg:
     """An image that can be loaded later."""
     def __init__(self, name, anchor_x='center', anchor_y='center'):
-        self.name = name
+        self.name = self.image_filename = name
         self.anchor_x = anchor_x
         self.anchor_y = anchor_y
 
@@ -102,7 +102,7 @@ class AnchoredImg:
             img.anchor_y = self.anchor_y
 
     def load(self):
-        img = pyglet.resource.image(f'{self.name}.png')
+        img = pyglet.resource.image(f'{self.image_filename}.png')
         img = copy.copy(img)  # resources are cached - get a unique copy
         self._set_anchor(img)
         return img
@@ -117,14 +117,18 @@ class ImageSequence(AnchoredImg):
             delay=0.1,
             anchor_x='center',
             anchor_y='center',
-            loop=False):
+            loop=False,
+            flip_x_from=None):
         super().__init__(name, anchor_x, anchor_y)
         self.frames = frames
         self.delay = delay
         self.loop = loop
+        self.flip_x = bool(flip_x_from)
+        if self.flip_x:
+            self.image_filename = flip_x_from
 
     def load(self):
-        img = pyglet.resource.image(f'{self.name}.png')
+        img = pyglet.resource.image(f'{self.image_filename}.png')
         grid = pyglet.image.ImageGrid(
             img,
             rows=1,
@@ -135,11 +139,14 @@ class ImageSequence(AnchoredImg):
         for img in images:
             self._set_anchor(img)
 
-        return pyglet.image.Animation.from_image_sequence(
+        anim = pyglet.image.Animation.from_image_sequence(
             images,
             self.delay,
             loop=self.loop
         )
+        if self.flip_x:
+            anim = anim.get_transform(flip_x=True)
+        return anim
 
 
 class ActorGroup(pyglet.graphics.OrderedGroup):
@@ -212,8 +219,9 @@ class Actor:
     def play(self, name):
         if not self.scene:
             return
-        self.sprite.image = self.sprites[name]
-        self.anim = name
+        if self.anim != name:
+            self.sprite.image = self.sprites[name]
+            self.anim = name
 
     @property
     def position(self):
@@ -265,12 +273,28 @@ class Actor:
 
 
 class Player(Actor):
+    def walk(name, **kwargs):
+        defaults = dict(
+            anchor_y=23,
+            frames=8,
+            delay=0.05,
+            loop=True,
+        )
+        return ImageSequence(
+            name,
+            **{**defaults, **kwargs}
+        )
+
     DEFAULT_Z = 1
     SPRITES = [
         'pc-up',
         'pc-down',
         'pc-left',
         'pc-right',
+        walk('pc-walk-up', anchor_y=19),
+        walk('pc-walk-down', anchor_y=19),
+        walk('pc-walk-right'),
+        walk('pc-walk-left', flip_x_from='pc-walk-right'),
         ImageSequence(
             'pc-smouldering',
             anchor_y=10,
@@ -286,6 +310,7 @@ class Player(Actor):
             loop=True,
         ),
     ]
+    del walk
 
     def set_orientation(self, d):
         self.play(f'pc-{d.get_sprite()}')
@@ -326,6 +351,7 @@ class Bomb(Actor):
         floating('freeze-bomb-float-frozen'),
         AnchoredImg('spark'),
     ]
+    del floating
     red = False
 
     def play(self, name):
