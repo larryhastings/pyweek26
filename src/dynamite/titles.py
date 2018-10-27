@@ -185,7 +185,10 @@ N   new game         T    Tutorial"""
         elif k == key.T:
             self.next_level = 'tutorial1'
         elif k == key.SPACE:
-            self.next_level = QUICKSAVE_FILE.read_text().strip()
+            if self.has_save():
+                self.next_level = QUICKSAVE_FILE.read_text().strip()
+            else:
+                self.next_level = 'tutorial1'
         else:
             return
 
