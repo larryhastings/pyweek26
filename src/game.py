@@ -1875,6 +1875,8 @@ class TimedBomb(Bomb):
     sprite_name = 'timed-bomb'
     interval = timed_bomb_interval
 
+    SPARK_COLOR = 0xff, 0xa9, 0x00
+
     def __init__(self, position, lit=True):
         super().__init__(position)
 
@@ -1891,6 +1893,7 @@ class TimedBomb(Bomb):
                 y=sy,
             )
             self.spark.scale = 0.5
+            self.spark.color = self.SPARK_COLOR
             self.t = 0
             clock.schedule(self.update_spark)
 
@@ -1935,9 +1938,15 @@ class TimedBomb(Bomb):
                 next = 0.1 * logics_per_second
             self.red_timer = Timer("bomb toggle red again", game.logics, next, self.toggle_red)
 
+
 class FreezeBomb(TimedBomb):
     sprite_name = 'freeze-bomb'
     interval = freeze_detonation_interval
+
+    SPARK_COLOR = 255, 255, 255
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     def detonate(self):
         if self.detonated:
@@ -1959,7 +1968,7 @@ class FreezeBomb(TimedBomb):
         if self.animator:
             self.animator.cancel()
         self.unqueue_for_tile()
-        self.actor.scene.spawn_explosion(self.actor.position)
+        self.actor.scene.spawn_explosion(self.actor.position, freeze=True)
         self.actor.delete()
         self.remove()  # Remove ourselves before processing on_blasted
         # t = Timer(f"bomb {self} detonation", game.logics, exploding_bomb_interval, self.remove)

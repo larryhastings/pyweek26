@@ -41,8 +41,20 @@ class Scene:
     def spawn_player(self, position, sprite='pc-up'):
         return Player(self, position, sprite)
 
-    def spawn_explosion(self, position):
-        Explosion(self, position)
+    def spawn_explosion(self, position, freeze=False):
+        Explosion(self, position, freeze=freeze)
+        if freeze:
+            self.spawn_particles(
+                15,
+                'snowflake',
+                position,
+                (10, 30),
+                5,
+                (30, 100),
+                50,
+                0.2,
+                -50
+            )
 
     def spawn_particles(self, num, sprite_name, position, zrange, speed, vzrange, va, drag=1.0, gravity=-100):
         for _ in range(num):
@@ -74,11 +86,10 @@ class Scene:
 
 class AnchoredImg:
     """An image that can be loaded later."""
-    def __init__(self, name, anchor_x='center', anchor_y='center', copy=True):
+    def __init__(self, name, anchor_x='center', anchor_y='center'):
         self.name = name
         self.anchor_x = anchor_x
         self.anchor_y = anchor_y
-        self.copy = copy
 
     def _set_anchor(self, img):
         if self.anchor_x == 'center':
@@ -92,8 +103,7 @@ class AnchoredImg:
 
     def load(self):
         img = pyglet.resource.image(f'{self.name}.png')
-        if self.copy:
-            img = copy.copy(img)
+        img = copy.copy(img)  # resources are cached - get a unique copy
         self._set_anchor(img)
         return img
 
@@ -286,8 +296,7 @@ class Bomb(Actor):
         'timed-bomb',
         'timed-bomb-red',
         'freeze-bomb',
-        'freeze-bomb-float',
-        'freeze-bomb-float-red',
+        'freeze-bomb-red',
         'contact-bomb',
         ImageSequence(
             'contact-bomb-float',
@@ -307,6 +316,22 @@ class Bomb(Actor):
         ),
         ImageSequence(
             'timed-bomb-float-red',
+            frames=2,
+            delay=1.1,
+            anchor_x='center',
+            anchor_y=14,
+            loop=True,
+        ),
+        ImageSequence(
+            'freeze-bomb-float',
+            frames=2,
+            delay=1.1,
+            anchor_x='center',
+            anchor_y=14,
+            loop=True,
+        ),
+        ImageSequence(
+            'freeze-bomb-float-red',
             frames=2,
             delay=1.1,
             anchor_x='center',
@@ -347,9 +372,17 @@ class Explosion(Actor):
             anchor_x=53,
             anchor_y=39,
         ),
+        ImageSequence(
+            'explosion-freeze',
+            frames=9,
+            delay=0.02,
+            anchor_x=53,
+            anchor_y=39,
+        ),
     ]
-    def __init__(self, scene, position):
-        super().__init__(scene, position, 'explosion')
+    def __init__(self, scene, position, freeze=False):
+        sprite = 'explosion-freeze' if freeze else 'explosion'
+        super().__init__(scene, position, sprite)
         self.sprite.on_animation_end = self.delete
         self.sprite.scale = 2.0
 
@@ -376,12 +409,13 @@ class Static(Actor):
 class Particle(Actor):
     """3D-ish particle effects."""
     SPRITES = [
-        AnchoredImg('timed-bomb', anchor_x=21, anchor_y=21, copy=True),
-        AnchoredImg('freeze-bomb', anchor_x=21, anchor_y=21, copy=True),
-        AnchoredImg('contact-bomb'),
+        AnchoredImg('timed-bomb', anchor_x=21, anchor_y=21),
+        AnchoredImg('freeze-bomb', anchor_x=21, anchor_y=21),
+        AnchoredImg('contact-bomb', anchor_x=24, anchor_y=21),
         AnchoredImg('leaf1', anchor_y=20),
         'leaf2',
         'twig',
+        'snowflake',
     ]
 
     def __init__(
@@ -411,7 +445,10 @@ class Particle(Actor):
 
         if self.z < 0:
             if 'bomb' in self.anim:
-                self.scene.spawn_explosion(self.position)
+                self.scene.spawn_explosion(
+                    self.position,
+                    'freeze' in self.anim
+                )
             self.delete()
             return
 
