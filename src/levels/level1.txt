@@ -1,26 +1,30 @@
-.^#.........
-.^#.........
-B^#....d....
-.^#.........
-.^#v<L<.....
-.^#v##^..b..
-.##v##^.....
-.#.111^.....
-.#####2..###
-<<#.##2..###
-#S#.##2#@###
-.C#XT###....
-.#!.........
+.X>>>>>>D#..
+.^^....###tt
+B^^....dTt..
+.^^........X
+.^!v<L<.D..^
+.^#v##^..b.^
+.##v##^....^
+...>>>^rD..^
+..####^..r##
+<<#.##^..###
+#S#.##^@@#RR
+.C#.T###....
+.##>>>>r>>>D
 
 Legend
 L MapWaterCurrentLeft + Log
 X MapWaterCurrentUp + Dam
-C MapGrass + Dispenser.factory(RemoteControlBomb)
-! MapGrass + TimedBomb.factory(lit=False)
+D MapWater + Dam
+C MapGrass + Dispenser.factory(TimedBomb)
+! MapGrass + ContactBomb
 1 MapWaterCurrentRight + TimedBomb
 2 MapWaterCurrentUp + TimedBomb
+r MapWater + Scenery.factory('bullrush')
+R MapGrass + Scenery.factory('rock')
+% MapWaterCurrentRight + Scenery.factory('bullrush')
 
-:title: The testbed level
+:title: Dambusters
 :author: mauve
-:hint: Try out all the things!
+:hint: Use bombs to smash the dams!
 :next: level2.txt
