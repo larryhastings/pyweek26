@@ -295,6 +295,14 @@ class Player(Actor):
         walk('pc-walk-down', anchor_y=19),
         walk('pc-walk-right'),
         walk('pc-walk-left', flip_x_from='pc-walk-right'),
+        'pc-holding-up',
+        'pc-holding-down',
+        'pc-holding-left',
+        'pc-holding-right',
+        walk('pc-holding-walk-up', anchor_y=19),
+        walk('pc-holding-walk-down', anchor_y=19),
+        walk('pc-holding-walk-right'),
+        walk('pc-holding-walk-left', flip_x_from='pc-holding-walk-right'),
         ImageSequence(
             'pc-smouldering',
             anchor_y=10,
@@ -333,12 +341,12 @@ class Bomb(Actor):
             }
         )
     SPRITES = [
-        'timed-bomb',
-        'timed-bomb-red',
-        'timed-bomb-frozen',
-        'freeze-bomb',
-        'freeze-bomb-red',
-        'freeze-bomb-frozen',
+        AnchoredImg('timed-bomb', anchor_x=18, anchor_y=10),
+        AnchoredImg('timed-bomb-red', anchor_x=18, anchor_y=10),
+        AnchoredImg('timed-bomb-frozen', anchor_x=18, anchor_y=10),
+        AnchoredImg('freeze-bomb', anchor_x=18, anchor_y=10),
+        AnchoredImg('freeze-bomb-red', anchor_x=18, anchor_y=10),
+        AnchoredImg('freeze-bomb-frozen', anchor_x=18, anchor_y=10),
         'contact-bomb',
         'contact-bomb-frozen',
         floating('contact-bomb-float', anchor_y=18),

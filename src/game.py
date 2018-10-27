@@ -1099,7 +1099,6 @@ class Player(Entity):
         else:
             self.orientation = Orientation.LEFT
 
-        self.actor.set_orientation(self.orientation)
         self.animator = Animator(game.logics)
         self.halfway_timer = None
         self.moving = PlayerAnimationState.STATIONARY
@@ -1110,6 +1109,7 @@ class Player(Entity):
         self.remote_control_bombs = []
 
         self.new_position = self.new_platform = None
+        self.select_anim()
 
     def on_died(self):
         if not self.dead:
@@ -1157,6 +1157,7 @@ class Player(Entity):
         )
         for n, s in enumerate(reversed(self.actor.attached)):
             tween(s, tween='decelerate', duration=0.15, y=80 + 30 * n)
+        self.select_anim()
         return True
 
     def pop_bomb(self):
@@ -1166,7 +1167,9 @@ class Player(Entity):
         self.actor.detach(self.actor.attached[-1])
         for n, s in enumerate(reversed(self.actor.attached)):
             tween(s, tween='accelerate', duration=0.2, y=80 + 30 * n)
-        return self.bombs.pop()
+        bomb = self.bombs.pop()
+        self.select_anim()
+        return bomb
 
     def facing_pos(self):
         """Get the position the player is facing."""
@@ -1210,7 +1213,6 @@ class Player(Entity):
         self.position = new_position
         self.new_position = self.new_platform = None
 
-
     def _animation_finished(self):
         log(f"{self} finished animating")
         self.moving = PlayerAnimationState.STATIONARY
@@ -1223,8 +1225,17 @@ class Player(Entity):
             self.on_key(k)
         if self.held_key:
             self.on_key(self.held_key)
-        if not self.dead and self.moving is PlayerAnimationState.STATIONARY:
-            self.actor.play(f'pc-{self.orientation.get_sprite()}')
+        self.select_anim()
+
+    def select_anim(self):
+        """Set the standard animations (standing/walk, holding?, direction)."""
+        if self.dead:
+            # Don't trample the death animations
+            return
+        animset = 'pc-holding' if self.bombs else 'pc'
+        if self.moving is not PlayerAnimationState.STATIONARY:
+            animset += '-walk'
+        self.actor.play(f'{animset}-{self.orientation.get_sprite()}')
 
     def cancel_start_moving(self):
         if self.start_moving_timer:
@@ -1360,7 +1371,7 @@ class Player(Entity):
         if self.orientation != desired_orientation:
             log(f"{self} changing orientation to {desired_orientation!r}")
             self.orientation = desired_orientation
-            self.actor.set_orientation(desired_orientation)
+            self.select_anim()
             return
 
         new_position = self.position + delta
@@ -1379,7 +1390,7 @@ class Player(Entity):
         self.moving_to = new_position
         self.new_position = new_position
         self.starting_position = self.actor.position
-        self.actor.play(f'pc-walk-{self.orientation.get_sprite()}')
+        self.select_anim()
         self.animator.animate(
             self.actor, 'position',
             new_position,
@@ -1808,7 +1819,7 @@ class Bomb(FloatingPlatform):
             self.occupant.on_blasted(self, position)
 
     def remove(self):
-        print(f"{self} bomb has exploded, removing self.")
+        log(self, "bomb has exploded, removing self.")
         self.position = None
         self.claim.position = None
 
