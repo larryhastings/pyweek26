@@ -15,15 +15,23 @@ BODY_FONT = 'Edo'
 
 serial_number = 0
 
+current_screen = None
+
 class Screen:
     SPRITES = []
     BGCOLOR = 66 / 255, 125 / 255, 193 / 255
+    ended = False
 
     def log(self, *a):
         s = " ".join(str(s) for s in a)
         # print(f"\n[{self.__class__.__name__}] #{self.serial_number} {s}\n")
 
     def __init__(self, window, on_finished=None):
+        global current_screen
+        if current_screen:
+            current_screen.end()
+        current_screen = self
+
         handlers = {}
         global serial_number
         serial_number += 1
@@ -37,6 +45,7 @@ class Screen:
         self.load()
         self.batch = pyglet.graphics.Batch()
         self.t = 0
+
         self.clock = clock.Clock(time_function=self._time)
         clock.schedule(self._tick)
         self.start()
@@ -54,6 +63,11 @@ class Screen:
         """Start the screen."""
 
     def end(self):
+        if self.ended:
+            return
+        self.ended = True
+        global current_screen
+        current_screen = None
         self.log("<<<< pop handlers <<<<")
         self.window.pop_handlers()
         clock.unschedule(self._tick)

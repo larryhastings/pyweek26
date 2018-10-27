@@ -11,12 +11,12 @@ import time
 import math
 import copy
 
-from pyglet import gl
+from pyglet import clock, gl
 import pyglet.image
+import pyglet.resource
+from pyglet.text import Label
 import pyglet.window.key as key
 import pyglet.window.key
-import pyglet.resource
-from pyglet import clock
 
 from dynamite import coords
 from dynamite.coords import map_to_screen
@@ -27,6 +27,7 @@ from dynamite.maploader import load_map
 from dynamite.vec2d import Vec2D
 from dynamite.animation import animate as tween
 from dynamite.titles import TitleScreen, Screen, IntroScreen, BackStoryScreen
+from dynamite.titles import BODY_FONT
 
 TITLE = "Dynamite Valley"
 
@@ -125,14 +126,6 @@ class TileMeta(type):
         return self() + ano
 
 
-class MapOOB:
-    water = False
-    moving_water = False
-    spawn_item = None
-    obj_factory = None
-    navigability = 0
-
-
 class MapTile(metaclass=TileMeta):
     water = False
     moving_water = False
@@ -152,6 +145,13 @@ class MapTile(metaclass=TileMeta):
         o = copy.copy(self)
         o.obj_factory = ano
         return o
+
+class MapOOB(MapTile):
+    water = False
+    moving_water = False
+    spawn_item = None
+    obj_factory = None
+    navigability = 0
 
 
 class MapWater(MapTile):
@@ -456,8 +456,13 @@ class Level:
             raise Exception("No player position set!")
 
     def __init__(self):
+        self.serial_number = level_number
         self.start = time.time()
         self.player = None
+        self.dams_remaining = 0
+
+    def __repr__(self):
+        return f'<Level #{serial_number}>'
 
     def get(self, pos):
         return self.map.get(pos) or self.DEFAULT
@@ -472,6 +477,42 @@ class Level:
         """Get the top entity at the given coordinates, or None if empty."""
         return self.tile_occupant[coords]
 
+    def on_dam_spawned(self, dam):
+        self.dams_remaining += 1
+
+    def on_dam_destroyed(self, dam):
+        self.dams_remaining -= 1
+        if not self.dams_remaining:
+            self.complete()
+
+    def complete(self):
+        self.complete_label = Label(
+            "LEVEL COMPLETE!",
+            x=window.width // 2,
+            y=window.height - 200,
+            font_name=BODY_FONT,
+            font_size=40,
+            anchor_x='center',
+            anchor_y='center',
+            color=(0, 0, 0, 255),
+            batch=scene.level_renderer.batch,
+        )
+        self.any_key_label = Label(
+            "Press Space to continue",
+            x=window.width // 2,
+            y=window.height - 300,
+            font_name=BODY_FONT,
+            font_size=15,
+            anchor_x='center',
+            anchor_y='center',
+            color=IntroScreen.HIGHLIGHT_TEXT,
+            batch=scene.level_renderer.batch,
+        )
+        game.key_handler = self
+
+    def on_key_press(self, k):
+        if k == key.SPACE:
+            next_level()
 
 class Animator:
     def __init__(self, clock):
@@ -563,6 +604,10 @@ class Animator:
 
     @property
     def position(self):
+        if self.end is None:
+            return self.start
+        if self.start is None:
+            return self.end
         ratio = self.ratio
         if self.ratio_offset:
             range = 1 - self.ratio_offset
@@ -935,11 +980,13 @@ class Dam(Entity):
     def __init__(self, position):
         super().__init__(position)
         self.actor = scene.spawn_static(self.position, 'beaver-dam')
+        level.on_dam_spawned(self)
 
     def on_blasted(self, bomb, position):
         super().on_blasted(bomb, position)
         self.actor.delete()
         self.position = None
+        level.on_dam_destroyed(self)
 
 
 class Orientation(Enum):
@@ -1117,6 +1164,7 @@ class Player(Entity):
             new_position = self.new_platform.position
             self.animator.reroute(self.new_platform.position)
         self.position = new_position
+        self.new_position = self.new_platform = None
 
 
     def _animation_finished(self):
@@ -1487,9 +1535,10 @@ class FloatingPlatform(Entity):
             return
 
         # okay, we're being pushed into something.
-        assert isinstance(blocker, Entity)
+        assert isinstance(blocker, (Entity, TileMeta)), f"blocker isn't an entity or map tile, it's {blocker}"
         self.on_pushed_into_something(blocker)
-        blocker.on_something_pushed_into_us(self)
+        if isinstance(blocker, Entity):
+            blocker.on_something_pushed_into_us(self)
         return
 
     def on_pushed_into_something(self, other):
@@ -1514,9 +1563,10 @@ class FloatingPlatform(Entity):
             okay_if_occupant_is_floating_away=False)
         if blocker:
             tile = level.get(self.new_position)
-            log(f"{self} we can't continue floating to {self.new_position}!")
+            log(f"{self} we can't continue floating to {self.new_position}! blocked by {blocker}.")
             self.on_pushed_into_something(blocker)
-            blocker.on_something_pushed_into_us(self)
+            if isinstance(blocker, Entity):
+                blocker.on_something_pushed_into_us(self)
             return
 
         log(f"{self} halfway, proceeding.")
@@ -1951,6 +2001,23 @@ def start_game_screen():
     global game_screen
     game_screen = GameScreen(window)
 
+level_number = None
+level_set = None
+
+def start_game(_level_set):
+    global level_number
+    global level_set
+    level_number = 0
+    level_set = _level_set
+    next_level()
+
+def next_level():
+    global level_number
+    if level_number is None:
+        sys.exit("You played your one level.  Now git!")
+    level_number += 1
+    start_level(level_set.format(number=level_number))
+
 def start_level(filename):
     """Start the level with the given filename."""
     global game_screen
@@ -1975,9 +2042,14 @@ def start_level(filename):
     level.mtime = map.mtime
 
     # last-minute level fixups... it's complicated.
-    for entity in level.tile_occupant.values():
-        if entity:
-            entity.on_level_loaded()
+    # for entity in level.tile_occupant.values():
+    #     if entity:
+    #         entity.on_level_loaded()
+
+    if not level.dams_remaining:
+        sarcastic_rejoinder = "\n\nNo dams defined in level!  Uh, you win?\n\n"
+        print(sarcastic_rejoinder)
+        sys.exit(-1)
 
     scene.level_renderer = LevelRenderer(level)
     scene.flow = FlowParticles(level)
@@ -2070,9 +2142,12 @@ if len(sys.argv) > 1:
     if not fname.startswith('-'):
         start_level(fname)
 else:
+    # note: NOT AN F STRING
+    # this is LAZILY COMPUTED when NUMBER changes
+    level_set ='level{number}.txt'
     TitleScreen(
         window,
-        on_finished=lambda: BackStoryScreen(window, on_finished=lambda: start_level('level1.txt'))
+        on_finished=lambda: BackStoryScreen(window, on_finished=lambda: start_game(level_set))
     )
 
 try:
