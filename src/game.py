@@ -935,12 +935,20 @@ class Player(Entity):
         self.bombs = []
 
     def on_blasted(self, bomb, position):
-        if self.dead:
-            # FIXME: may have died by drowning, could play a
-            # drowning-smouldering animation
-            return
-        self.actor.play('pc-smouldering')
-        self.dead = True
+        if not self.dead:
+            if self.standing_on is bomb:
+                self.drown()
+            else:
+                self.actor.play('pc-smouldering')
+                self.dead = True
+
+    def drown(self):
+        if not self.dead:
+            position = self.position
+            self.actor.delete()
+            self.remove()
+            DrowningPC(position)
+            self.dead = True
 
     def push_bomb(self, bomb):
         """Pick up a bomb."""
@@ -972,9 +980,7 @@ class Player(Entity):
         # if platform stops existing, it calls us with None
         # but! it's an exploding bomb! so we're about to die anyway.
         if platform is None:
-            self.actor.play('pc-drowning')
-            self.actor.z = 0
-            self.dead = True
+            self.drown()
             return
 
         if self.moving == PlayerAnimationState.MOVING_ABORTABLE:
@@ -1412,12 +1418,17 @@ class FloatingPlatform(Entity):
 class Log(FloatingPlatform):
 
     def __init__(self, position):
-        log(f"Log init, position is {position}")
+        log(f"{type(self).__name__} init, position is {position}")
         super().__init__(position)
         assert self.floating
 
     def make_actor(self):
         self.actor = scene.spawn_static(self.position, 'log')
+
+
+class DrowningPC(Log):
+    def make_actor(self):
+        self.actor = scene.spawn_player(self.position, 'pc-drowning')
 
 
 class Bomb(FloatingPlatform):
@@ -1475,6 +1486,7 @@ class Bomb(FloatingPlatform):
         self.unqueue_for_tile()
         self.actor.scene.spawn_explosion(self.actor.position)
         self.actor.delete()
+        self.remove()  # Remove ourselves before processing on_blasted
         # t = Timer(f"bomb {self} detonation", game.logics, exploding_bomb_interval, self.remove)
         # log(f"WHAT THE HELL TIMER {t}")
         for delta in self.blast_pattern.coordinates:
@@ -1484,7 +1496,6 @@ class Bomb(FloatingPlatform):
                 e.on_blasted(self, position)
         if self.occupant:
             self.occupant.on_blasted(self, position)
-        self.remove()
 
     def remove(self):
         print(f"{self} bomb has exploded, removing self.")
