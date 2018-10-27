@@ -962,7 +962,7 @@ class Player(Entity):
     def push_bomb(self, bomb):
         """Pick up a bomb."""
         if len(self.bombs) == self.MAX_BOMBS:
-            return
+            return False
         self.bombs.append(bomb)
         self.actor.attach(
             dynamite.scene.Bomb.sprites[bomb.sprite_name],
@@ -971,6 +971,7 @@ class Player(Entity):
         )
         for n, s in enumerate(reversed(self.actor.attached)):
             tween(s, tween='decelerate', duration=0.15, y=80 + 30 * n)
+        return True
 
     def pop_bomb(self):
         """Drop a bomb."""
@@ -1461,6 +1462,16 @@ class Bomb(FloatingPlatform):
     def make_actor(self):
         self.actor = scene.spawn_bomb(self.position, self.sprite_name)
 
+    def interact(self, player):
+        """Allow the player to pick up the bomb.
+
+        Bombs that cannot be taken will override this method.
+        """
+        taken = player.push_bomb(type(self))
+        if taken:
+            self.actor.delete()
+            self.remove()
+
     def on_level_loaded(self):
         # when a bomb spawns on moving water,
         # if the space it wants to animate to is open,
@@ -1552,24 +1563,33 @@ class Bomb(FloatingPlatform):
 class TimedBomb(Bomb):
     sprite_name = 'timed-bomb'
 
-    def __init__(self, position):
+    def __init__(self, position, lit=True):
         super().__init__(position)
 
         # TODO convert these to our own timers
         # otherwise they'll still fire when we pause the game
-        Timer("bomb toggle red", game.logics, timed_bomb_interval * 0.5, self.toggle_red)
-        Timer("bomb detonate", game.logics, timed_bomb_interval, self.detonate)
         self.start_time = game.logics.counter
+        self.lit = lit
+        if lit:
+            Timer("bomb toggle red", game.logics, timed_bomb_interval * 0.5, self.toggle_red)
+            Timer("bomb detonate", game.logics, timed_bomb_interval, self.detonate)
 
-        sx, sy = (20, 27) if self.floating else (18, 35)
-        self.spark = self.actor.attach(
-            dynamite.scene.Bomb.sprites['spark'],
-            x=sx,
-            y=sy,
-        )
-        self.spark.scale = 0.5
-        self.t = 0
-        clock.schedule(self.update_spark)
+            sx, sy = (20, 27) if self.floating else (18, 35)
+            self.spark = self.actor.attach(
+                dynamite.scene.Bomb.sprites['spark'],
+                x=sx,
+                y=sy,
+            )
+            self.spark.scale = 0.5
+            self.t = 0
+            clock.schedule(self.update_spark)
+
+    def interact(self, player):
+        if not self.lit:
+            taken = player.push_bomb(type(self))
+            if taken:
+                self.actor.delete()
+                self.remove()
 
     def detonate(self):
         self.spark = None
@@ -1605,6 +1625,7 @@ class ContactBomb(Bomb):
     def on_pushed_into_something(self, tile, occupant):
         log(f"contact bomb pushed onto {tile} {occupant}! kaboom!")
         self.detonate()
+
 
 class RemoteControlBomb(Bomb):
     sprite_name = 'timed-bomb'
