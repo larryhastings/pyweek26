@@ -1755,6 +1755,7 @@ class Bomb(FloatingPlatform):
 
     def __init__(self, position):
         self.current_sprite_name = None
+        self.frozen = False
 
         super().__init__(position)
 
@@ -1766,6 +1767,7 @@ class Bomb(FloatingPlatform):
 
     def on_position_changed(self):
         suffix = "-float" if self.floating else ""
+        suffix += "-frozen" if self.frozen else ""
         if self.actor:
             sprite_name = f'{self.sprite_name}{suffix}'
             if self.current_sprite_name != sprite_name:
@@ -1915,18 +1917,25 @@ class TimedBomb(Bomb):
         self.t += dt
 
         self.spark.scale = 0.5 + 0.1 * math.sin(self.t * 10)
-        self.spark.rotation += 1.5 * 360 * dt
+        if not self.frozen:
+            self.spark.rotation += 1.5 * 360 * dt
 
     def on_frozen(self, bomb, position):
         log(f"{self} has been frozen!  pause the countdowns.")
         self.set_freeze_timer(self.on_unfreeze)
-        self.red_timer.pause()
-        self.detonate_timer.pause()
+        self.frozen = True
+        if self.lit:
+            self.red_timer.pause()
+            self.detonate_timer.pause()
+        self.on_position_changed()
 
     def on_unfreeze(self):
         log(f"{self} has unfrozen!  continue the countdowns.")
-        self.red_timer.unpause()
-        self.detonate_timer.unpause()
+        self.frozen = False
+        if self.lit:
+            self.red_timer.unpause()
+            self.detonate_timer.unpause()
+        self.on_position_changed()
 
     def toggle_red(self):
         elapsed = game.logics.counter - self.start_time
@@ -2020,6 +2029,7 @@ class ContactBomb(Bomb):
         if self.detonation_timer:
             self.detonation_timer.pause()
         self.frozen = True
+        self.on_position_changed()
 
     def on_unfreeze(self):
         log(f"{self} has unfrozen!  become sensitive again.")
@@ -2027,6 +2037,7 @@ class ContactBomb(Bomb):
         if self.detonation_timer:
             self.detonation_timer.unpause()
         self.animate_if_on_moving_water()
+        self.on_position_changed()
 
 
 

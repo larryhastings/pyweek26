@@ -49,8 +49,8 @@ class Scene:
                 'snowflake',
                 position,
                 (10, 30),
-                5,
-                (30, 100),
+                4,
+                (50, 100),
                 50,
                 0.2,
                 -50
@@ -292,55 +292,69 @@ class Player(Actor):
 
 
 class Bomb(Actor):
+    def floating(name, **kwargs):
+        defaults = dict(
+            frames=2,
+            delay=1.1,
+            anchor_x='center',
+            anchor_y=14,
+            loop=True,
+        )
+        return ImageSequence(
+            name,
+            **{
+                **defaults,
+                **kwargs,
+            }
+        )
     SPRITES = [
         'timed-bomb',
         'timed-bomb-red',
+        'timed-bomb-frozen',
         'freeze-bomb',
         'freeze-bomb-red',
+        'freeze-bomb-frozen',
         'contact-bomb',
-        ImageSequence(
-            'contact-bomb-float',
-            frames=2,
-            delay=1.1,
-            anchor_x='center',
-            anchor_y=18,
-            loop=True,
-        ),
-        ImageSequence(
-            'timed-bomb-float',
-            frames=2,
-            delay=1.1,
-            anchor_x='center',
-            anchor_y=14,
-            loop=True,
-        ),
-        ImageSequence(
-            'timed-bomb-float-red',
-            frames=2,
-            delay=1.1,
-            anchor_x='center',
-            anchor_y=14,
-            loop=True,
-        ),
-        ImageSequence(
-            'freeze-bomb-float',
-            frames=2,
-            delay=1.1,
-            anchor_x='center',
-            anchor_y=14,
-            loop=True,
-        ),
-        ImageSequence(
-            'freeze-bomb-float-red',
-            frames=2,
-            delay=1.1,
-            anchor_x='center',
-            anchor_y=14,
-            loop=True,
-        ),
+        'contact-bomb-frozen',
+        floating('contact-bomb-float', anchor_y=18),
+        floating('contact-bomb-float-frozen', anchor_y=18),
+        floating('timed-bomb-float'),
+        floating('timed-bomb-float-red'),
+        floating('timed-bomb-float-frozen'),
+        floating('freeze-bomb-float'),
+        floating('freeze-bomb-float-red'),
+        floating('freeze-bomb-float-frozen'),
         AnchoredImg('spark'),
     ]
     red = False
+
+    def play(self, name):
+        was_frozen = self.anim.endswith('-frozen')
+        super().play(name)
+        now_frozen = name.endswith('-frozen')
+        if was_frozen and not now_frozen:
+            self.scene.clock.unschedule(self.eject_snowflake)
+        elif not was_frozen and now_frozen:
+            self.scene.clock.schedule_interval(self.eject_snowflake, 0.2)
+
+    def eject_snowflake(self, dt):
+        if random.randint(0, 2):
+            return
+        self.scene.spawn_particles(
+            1,
+            'snowflake',
+            self.position,
+            (20, 30),
+            1,
+            (30, 40),
+            50,
+            0.2,
+            -50
+        )
+
+    def delete(self):
+        self.scene.clock.unschedule(self.eject_snowflake)
+        super().delete()
 
     def toggle_red(self):
         """Flip the bomb sprite to/from red."""
