@@ -459,6 +459,7 @@ class Game:
 
 class Level:
     DEFAULT = MapOOB
+    loading = True
 
     def set_map(self, map_data):
         self.map = map_data.tiles
@@ -1383,7 +1384,8 @@ class Player(Entity):
                 snd = self.thud
 
             clock.schedule_once(lambda dt: snd.play(), 0.3)
-            level.player.remote_control_bombs.append(bomb)
+            if isinstance(bomb, RemoteControlBomb):
+                level.player.remote_control_bombs.append(bomb)
             if result is not True:
                 log(f"skipping bomb {bomb} across other bomb {result}")
                 delta = bomb_position - level.player.position
@@ -1621,9 +1623,9 @@ class FloatingPlatform(Entity):
         if (occupant.moving
             and occupant.moving_to == self.position):
             log(f"{prefix} no! it's occupied by {occupant} and the occupant is moving towards us.")
-            return None
+            return Occupant
         log(f"{prefix} yes!  it's occupied by {occupant}, but the occupant is moving out, and not towards us.")
-        return occupant
+        return None
 
     def animate_if_on_moving_water(self):
 
@@ -1643,16 +1645,18 @@ class FloatingPlatform(Entity):
         new_position = self.position + tile.current
 
         blocker = self.what_would_block_us_from_moving_to(new_position)
+        if blocker:
+            # okay, we're being pushed into something.
+            assert isinstance(blocker, (Entity, TileMeta)), f"blocker isn't an entity or map tile, it's {blocker}"
+            we_care = self.on_pushed_into_something(blocker)
+            if isinstance(blocker, Entity):
+                blocker.on_something_pushed_into_us(self)
+            if not we_care:
+                blocker = None
+
         if not blocker:
             self.move_with_animation(new_position, water_speed_logics)
-            return
 
-        # okay, we're being pushed into something.
-        assert isinstance(blocker, (Entity, TileMeta)), f"blocker isn't an entity or map tile, it's {blocker}"
-        self.on_pushed_into_something(blocker)
-        if isinstance(blocker, Entity):
-            blocker.on_something_pushed_into_us(self)
-        return
 
     def on_pushed_into_something(self, other):
         log(f"{self} pushed into {other}.  we don't really care.")
@@ -1772,7 +1776,7 @@ class Log(FloatingPlatform):
     def __init__(self, position):
         log(f"{type(self).__name__} init, position is {position}")
         super().__init__(position)
-        assert self.floating
+        assert level.get(position).water
 
     def make_actor(self):
         self.actor = scene.spawn_static(self.position, 'log')
@@ -1802,6 +1806,7 @@ class Bomb(FloatingPlatform):
         self.actor = scene.spawn_bomb(self.position, self.sprite_name)
 
     def on_position_changed(self):
+        log(f"{self} on position changed")
         suffix = "-float" if self.floating else ""
         suffix += "-frozen" if self.frozen else ""
         if self.actor:
@@ -2059,6 +2064,9 @@ class ContactBomb(Bomb):
         self.detonate_after_delay()
 
     def in_contact_with_entity(self, entity):
+        # ignore bumps while setting up the level
+        if level.loading:
+            return False
         if self.frozen:
             log(f"{self} contact bomb and {entity} are pushed together! but we're frozen right now!  so ignore it.  FOR NOW")
             return False
@@ -2210,6 +2218,7 @@ def start_level(filename):
 
     global level
     level = Level()
+    level.loading = True
 
     log(f"loading level {filename}")
 
@@ -2225,9 +2234,9 @@ def start_level(filename):
     level.mtime = map.mtime
 
     # last-minute level fixups... it's complicated.
-    # for entity in level.tile_occupant.values():
-    #     if entity:
-    #         entity.on_level_loaded()
+    for entity in level.tile_occupant.values():
+        if entity:
+            entity.on_level_loaded()
 
     if not level.dams_remaining:
         sarcastic_rejoinder = "\n\nNo dams defined in level!  Uh, you win?\n\n"
@@ -2243,6 +2252,7 @@ def start_level(filename):
     else:
         window.set_caption(TITLE)
 
+    level.loading = False
     game.pause()
     IntroScreen(window, map, on_finished=start_game_screen)
 
