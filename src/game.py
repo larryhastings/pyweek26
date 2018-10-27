@@ -357,7 +357,7 @@ def log(*a):
     elapsed = time.time() - log_start_time
     s = " ".join(str(x) for x in a)
     line = f"[{elapsed:07.3f}:{game.logics.counter:5}] {fn}()@{lineno} {s}"
-    print(line)
+    # print(line)
     print(line, file=_logfile)
 
 if not __debug__:
