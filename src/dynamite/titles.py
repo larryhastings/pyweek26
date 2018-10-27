@@ -1,4 +1,5 @@
 import math
+from pathlib import Path
 
 import pyglet.graphics
 import pyglet.sprite
@@ -12,6 +13,8 @@ from . import animation
 from .scene import AnchoredImg
 from .ninepatch import NinePatch
 
+
+QUICKSAVE_FILE = Path.cwd() / 'save.txt'
 
 BODY_FONT = 'Edo'
 
@@ -107,7 +110,11 @@ class TitleScreen(Screen):
         'valley-art',
     ]
 
+    def has_save(self):
+        return QUICKSAVE_FILE.exists()
+
     def start(self):
+
         valley = self.sprites['valley-art']
         valley.anchor_x = valley.anchor_y = 0
         self.bg = pyglet.sprite.Sprite(
@@ -142,16 +149,25 @@ class TitleScreen(Screen):
         )
 
     def show_label(self):
+        if self.has_save():
+            msg = """\
+Press space to continue!\n
+N   new game         T    Tutorial"""
+        else:
+            msg = "Press T for Tutorial or N for new Game"
         self.label = Label(
-            "Press any key to begin",
+            msg,
             x=self.window.width // 2,
             y=100,
+            width=self.window.width - 100,
             font_name=BODY_FONT,
             font_size=20,
             anchor_x='center',
             anchor_y='center',
             color=(255, 255, 255, 0),
             batch=self.batch,
+            multiline=True,
+            align='center',
             group=pyglet.graphics.OrderedGroup(1),
         )
         self.clock.schedule(self.update_label)
@@ -164,6 +180,15 @@ class TitleScreen(Screen):
         )
 
     def on_key_press(self, k, modifiers):
+        if k == key.N:
+            self.next_level = 'level1'
+        elif k == key.T:
+            self.next_level = 'tutorial1'
+        elif k == key.SPACE:
+            self.next_level = QUICKSAVE_FILE.read_text().strip()
+        else:
+            return
+
         self.log(f"on_key_press {k} {modifiers}")
         self.end()
 
@@ -190,6 +215,12 @@ class IntroScreen(Screen):
             self.sprites['box-background'],
             border_size=10
         )
+        try:
+            QUICKSAVE_FILE.write_text(self.map.name)
+        except OSError:
+            print(
+                f"Warning: couldn't write to quicksave file {QUICKSAVE_FILE}!"
+            )
 
     def on_draw(self):
         gl.glClearColor(*self.BGCOLOR, 0)
@@ -348,6 +379,7 @@ class BackStoryScreen(Screen):
     def on_key_press(self, *_):
         self.clock.unschedule(self.next_bubble)
         self.next_bubble(0)
+
 
 class GameWonScreen(Screen):
     SPRITES = [
