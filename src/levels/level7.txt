@@ -1,0 +1,31 @@
+./####......
+.^^.R^..../.
+/^^..^<<..^.
+^^^..^r^B.^.
+^^^..^>^##^.
+^^^..^^<##^T
+^^^.......^t
+^^^.D.rTt.^T
+^^^..r.###^#
+^^^<<#FS##^#
+^^<<####BR<<
+b^^^<<<<<<<<
+^^^^<<<<<<<<
+
+Legend
+b MapWaterCurrentUp + Scenery.factory('beaver-right')
+s MapGrass
+D MapWater + Dam
+/ MapWaterCurrentUp + Dam
+L MapWaterCurrentDown + Log
+c MapGrass + ContactBomb
+! MapGrass + TimedBomb.factory(lit=False)
+B MapGrass + Dispenser.factory(TimedBomb)
+F MapGrass + Dispenser.factory(FreezeBomb)
+r MapWater + Scenery.factory('bullrush')
+R MapGrass + Scenery.factory('rock')
+
+:title: A bend in the river
+:author: mauve
+:hint: There's a touch of ice up in these mountains
+:next: level8

@@ -332,7 +332,7 @@ class Bomb(Actor):
             frames=2,
             delay=1.1,
             anchor_x='center',
-            anchor_y=14,
+            anchor_y=19,
             loop=True,
         )
         return ImageSequence(

@@ -1,0 +1,33 @@
+>>>>>>>>>>>v
+^D.r.db...Dv
+^......r...v
+^<<<<<<<<<<v
+t##########t
+>>>>>>>>>>>v
+^<<<<<<<<<<<
+v<<<<<v<<<<<
+vD##DLvD#BDL
+>>>>>^>>>>>^
+.>>>>>>>>>v.
+D^<<<<<<<<<D
+C###S######C
+
+Legend
+b MapWaterCurrentUp + Scenery.factory('beaver-right')
+s MapGrass
+D MapWater + Dam
+/ MapWaterCurrentLeft + Dam
+L MapWaterCurrentUp + Log
+l MapWaterCurrentLeft + Log
+c MapGrass + ContactBomb
+C MapGrass + RemoteControlBomb
+! MapGrass + TimedBomb.factory(lit=False)
+B MapGrass + Dispenser.factory(RemoteControlBomb)
+F MapGrass + Dispenser.factory(FreezeBomb)
+r MapWater + Scenery.factory('bullrush')
+R MapGrass + Scenery.factory('rock')
+
+:title: Frog River
+:author: mauve
+:hint: Frogs live here among the bullrushes
+:next: finished
