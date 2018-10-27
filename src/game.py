@@ -50,6 +50,7 @@ typematic_delay = 1
 
 timed_bomb_interval = 5 * logics_per_second
 exploding_bomb_interval = (1/10) * logics_per_second
+contact_bomb_detonation_interval = (2/10) * logics_per_second
 
 callback_interval = logic_interval
 
@@ -1804,19 +1805,27 @@ class FreezeBomb(TimedBomb):
 class ContactBomb(Bomb):
     sprite_name = 'contact-bomb'
     frozen = False
+    detonation_timer = None
 
     def on_blasted(self, bomb, position):
         # explicitly pass over FloatingPlatform.on_blasted
         super(FloatingPlatform, self).on_blasted(bomb, position)
-        self.detonate()
+        self.detonate_after_delay()
 
     def in_contact_with_entity(self, entity):
         if self.frozen:
             log(f"{self} contact bomb and {entity} are pushed together! but we're frozen right now!  so ignore it.  FOR NOW")
             return False
         log(f"{self} contact bomb and {entity} are pushed together! kaboom!")
-        self.detonate()
+        self.detonate_after_delay()
         return True
+
+    def detonate_after_delay(self):
+        if self.detonation_timer:
+            return
+        self.detonation_timer = Timer("ContactBomb detonation delay", game.logics, contact_bomb_detonation_interval, self.detonate)
+        if self.frozen:
+            self.detonation_timer.pause()
 
     def on_pushed_into_something(self, other):
         return self.in_contact_with_entity(other)
@@ -1827,11 +1836,15 @@ class ContactBomb(Bomb):
     def on_frozen(self, bomb, position):
         log(f"{self} has frozen!  desensitize to contact.")
         self.set_freeze_timer(self.on_unfreeze)
+        if self.detonation_timer:
+            self.detonation_timer.pause()
         self.frozen = True
 
     def on_unfreeze(self):
         log(f"{self} has unfrozen!  become sensitive again.")
         self.frozen = False
+        if self.detonation_timer:
+            self.detonation_timer.unpause()
         self.animate_if_on_moving_water()
 
 
