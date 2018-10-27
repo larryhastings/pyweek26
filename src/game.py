@@ -60,6 +60,8 @@ player_movement_delay_logics = typematic_start * logics_per_second
 water_speed_logics = 1 * logics_per_second
 explosion_push_logics = logics_per_second / 10
 fling_movement_logics = logics_per_second / 10
+freeze_detonation_interval = 2 * logics_per_second
+freeze_timer_logics = 5 * logics_per_second
 
 srcdir = Path(__file__).parent
 pyglet.resource.path = [
@@ -584,11 +586,19 @@ class Entity:
     # a tile we're animating to but is currently occupied.
     queued_tile = None
 
+    # are we moving?
+    moving = False
+
+    # if we're moving, where are we moving to?
+    moving_to = None
+
     # we've been flung across the map!
     _fling = None
 
     # are we a floating object?
     floating = False
+
+    freeze_timer = None
 
     @classmethod
     def factory(cls, *args, **kwargs):
@@ -762,6 +772,8 @@ class Entity:
                 fling_movement_logics,
                 self.on_fling_completed)
             self.position = None
+            self.moving = True
+            self.moving_to = fling.destination
         else:
             # jump there immediately
             log(f"{self} has no animator, so we'll just jump to the flung spot.")
@@ -780,6 +792,8 @@ class Entity:
         self._fling = None
         log(f"setting {self} position to {position}")
         self.position = position
+        self.moving = False
+        self.moving_to = None
 
     def interact(self, player):
         """Called when player interacts with this entity."""
@@ -793,7 +807,22 @@ class Entity:
             else:
                 position = self.actor.position
             log(f"{self} occupant {self.occupant}, by transitivity, has also been blasted. (at position {position})")
-            self.occupant.on_blasted(self, position)
+            self.occupant.on_blasted(bomb, position)
+
+    def on_frozen(self, bomb, position):
+        log(f"{self} has been frozen!  I personally don't care.")
+        if self.occupant:
+            if self.position != None:
+                position = self.position
+            else:
+                position = self.actor.position
+            log(f"{self} occupant {self.occupant}, by transitivity, has also been frozen. (at position {position})")
+            self.occupant.on_frozen(self, bomb, position)
+
+    def set_freeze_timer(self, callback):
+        if self.freeze_timer:
+            self.freeze_timer.cancel()
+        self.freeze_timer = Timer(f"{self} freeze timer", game.logics, freeze_timer_logics, callback)
 
     def on_stepped_on(self, occupier):
         self.occupant = occupier
@@ -828,8 +857,7 @@ class Claim(Entity):
         pass
 
     def on_blasted(self, bomb, position):
-        # pass it on to our owner
-        self.owner.on_blasted(bomb, position)
+        pass
 
 
 
@@ -866,11 +894,10 @@ class MovementAction(Enum):
     DISEMBARK = 2
 
 
-class PlayerAnimationState(Enum):
-    INVALID = 0
-    STATIONARY = 1
-    MOVING_ABORTABLE = 2
-    MOVING_COMMITTED = 3
+class PlayerAnimationState(IntEnum):
+    STATIONARY = 0
+    MOVING_ABORTABLE = 1
+    MOVING_COMMITTED = 2
 
 
 key_to_movement_delta = {
@@ -1015,6 +1042,7 @@ class Player(Entity):
     def _animation_finished(self):
         log("finished animating")
         self.moving = PlayerAnimationState.STATIONARY
+        self.moving_to = None
         if self.queued_key:
             if self.held_key:
                 assert self.held_key == self.queued_key, f"{key_repr(self.held_key)} != {key_repr(self.queued_key)} !!!"
@@ -1171,6 +1199,7 @@ class Player(Entity):
 
         log(f"animating player, from {self.position} by {delta} to {new_position}")
         self.moving = PlayerAnimationState.MOVING_ABORTABLE
+        self.moving_to = new_position
         self.new_position = new_position
         self.starting_position = self.actor.position
         self.animator.animate(
@@ -1206,6 +1235,7 @@ class Player(Entity):
             self.starting_position,
             player_movement_logics / 3,
             self._animation_finished)
+        self.moving_to = self.starting_position
 
 
 def enumerate_outside_in(iterable):
@@ -1288,9 +1318,6 @@ class FloatingPlatform(Entity):
     def __init__(self, position):
         super().__init__(position)
 
-        self.floating = level.get(position).water
-        if self.floating:
-            self.is_platform = True
         self.animator = Animator(game.logics)
         self.waiting_halfway = False
         self.make_actor()
@@ -1313,31 +1340,74 @@ class FloatingPlatform(Entity):
             self._animation_finished,
             self._animation_halfway,
             self._animation_tick)
+        self.moving = True
+        self.moving_to = self.new_position
+
+    def should_we_start_floating_to_position(self, position,
+            okay_if_occupant_is_floating_away=True):
+        tile = level.get(position)
+        occupant = level.tile_occupant[position]
+        prefix = f"{self} should we start floating to {position}? "
+        if not tile.water:
+            log(f"{prefix} no! it's not water.")
+            return False
+        # okay, it's water.
+        if not occupant:
+            log(f"{prefix} yes! it's unoccupied water.")
+            return True
+        if occupant == self.claim:
+            log(f"{prefix} yes!  we have claim to that space.")
+            return True
+        if not okay_if_occupant_is_floating_away:
+            # it's occupied, and right now we don't care
+            # whether or not the occupant is floating away.
+            log(f"{prefix} no!  it's occupied and we don't care if it's moving away.")
+            return False
+
+        # if the occupant is floating away from us,
+        # then they'll vacate by the time we get there,
+        # so maybe it'll all be fine.
+        assert occupant.position == position
+        if not occupant.moving:
+            log(f"{prefix} no!  it's occupied and the occupant isn't moving.")
+            return False
+        delta = occupant.moving_to - position
+        the_square_away_from_us = position + delta
+        if (occupant.moving
+            and occupant.moving_to == the_square_away_from_us):
+            log(f"{prefix} yes!  it's occupied but the occupant is moving away.")
+            return True
+        log(f"{prefix} no! it's occupied and the occupant is moving but not away.")
+        log("{self} is moving into {occupant} which is moving to {the_square_away_from_us}")
+        return False
 
     def animate_if_on_moving_water(self):
-        if self.standing_on:
-            return
-        tile = level.get(self.position)
-        self.moving = tile.moving_water
-        log(f"{self} placed at {self.position}, tile is {tile}. is it moving water? {self.moving}")
 
-        if not self.moving:
+        if self.standing_on:
+            self.platform = self.floating = self.moving = False
+            return
+
+        tile = level.get(self.position)
+        self.is_platform = self.floating = tile.water
+
+        log(f"{self} placed at {self.position}, tile is {tile}. is it moving water? {tile.moving_water}")
+
+        if not tile.moving_water:
             return
 
         new_position = self.position + tile.current
-        next_tile = level.get(new_position)
-        next_occupant = level.tile_occupant[new_position]
-        log(f"{self} what's going on on the next tile? {new_position} {next_tile} {next_occupant}")
-        if not (next_tile.water and not next_occupant):
-            # we're being pushed into something besides an empty water tile.
-            # mabye we react?
-            self.on_pushed_into_something(next_tile, next_occupant)
-            return
-        self.move_with_animation(new_position, water_speed_logics)
 
-    def on_pushed_into_something(self, tile, occupant):
-        log(f"bomb pushed onto {tile} {occupant}.  we'll start moving there anyway.")
-        pass
+        if self.should_we_start_floating_to_position(new_position):
+            self.move_with_animation(new_position, water_speed_logics)
+            return
+
+        # okay, we're being pushed into something.
+        self.on_pushed_into_something()
+        return
+
+    def on_pushed_into_something(self):
+        log(f"bomb pushed onto something.  we don't really care.")
+        return False
 
     def _animation_halfway(self):
         current_occupant = level.tile_occupant[self.new_position]
@@ -1347,6 +1417,13 @@ class FloatingPlatform(Entity):
             assert self.queued_tile == self.new_position, f"{self} queued_tile {self.queued_tile} != new_position {self.new_position} !!!"
             self.waiting_halfway = True
             self.animator.pause()
+            return
+
+        if not self.should_we_start_floating_to_position(self.new_position,
+            okay_if_occupant_is_floating_away=False):
+            tile = level.get(self.new_position)
+            log(f"{self} we can't continue floating to {self.new_position}!")
+            self.on_pushed_into_something()
             return
 
         log(f"{self} halfway, proceeding.")
@@ -1368,6 +1445,8 @@ class FloatingPlatform(Entity):
 
     def _animation_finished(self):
         log(f"{self} finished moving")
+        self.moving = False
+        self.moving_to = None
         self.animate_if_on_moving_water()
 
     def _animation_tick(self):
@@ -1551,14 +1630,15 @@ class Bomb(FloatingPlatform):
 
 class TimedBomb(Bomb):
     sprite_name = 'timed-bomb'
+    interval = timed_bomb_interval
 
     def __init__(self, position):
         super().__init__(position)
 
         # TODO convert these to our own timers
         # otherwise they'll still fire when we pause the game
-        Timer("bomb toggle red", game.logics, timed_bomb_interval * 0.5, self.toggle_red)
-        Timer("bomb detonate", game.logics, timed_bomb_interval, self.detonate)
+        self.red_timer = Timer("bomb toggle red", game.logics, self.interval * 0.5, self.toggle_red)
+        self.detonate_timer = Timer("bomb detonate", game.logics, self.interval, self.detonate)
         self.start_time = game.logics.counter
 
         sx, sy = (20, 27) if self.floating else (18, 35)
@@ -1584,6 +1664,17 @@ class TimedBomb(Bomb):
         self.spark.scale = 0.5 + 0.1 * math.sin(self.t * 10)
         self.spark.rotation += 1.5 * 360 * dt
 
+    def on_frozen(self, bomb, position):
+        log(f"{self} has been frozen!  pause the countdowns.")
+        self.set_freeze_timer(self.on_unfreeze)
+        self.red_timer.pause()
+        self.detonate_timer.pause()
+
+    def on_unfreeze(self):
+        log(f"{self} has unfrozen!  continue the countdowns.")
+        self.red_timer.unpause()
+        self.detonate_timer.unpause()
+
     def toggle_red(self):
         elapsed = game.logics.counter - self.start_time
         if self.actor.scene:
@@ -1592,19 +1683,74 @@ class TimedBomb(Bomb):
                 next = 0.4 * logics_per_second
             else:
                 next = 0.1 * logics_per_second
-            Timer("bomb toggle red again", game.logics, next, self.toggle_red)
+            self.red_timer = Timer("bomb toggle red again", game.logics, next, self.toggle_red)
+
+class FreezeBomb(TimedBomb):
+    sprite_name = 'freeze-bomb'
+    interval = freeze_detonation_interval
+
+    def detonate(self):
+        if self.detonated:
+            return
+        self.detonated = True
+
+        self.spark = None
+        clock.unschedule(self.update_spark)
+
+        if self._fling:
+            assert self.position is None
+            position = self.animator.position
+            position = Vec2D(math.floor(position.x), math.floor(position.y))
+        else:
+            position = self.position
+
+        log(f"{self} freeze-detonating at {position}!")
+
+        if self.animator:
+            self.animator.cancel()
+        self.unqueue_for_tile()
+        self.actor.scene.spawn_explosion(self.actor.position)
+        self.actor.delete()
+        self.remove()  # Remove ourselves before processing on_blasted
+        # t = Timer(f"bomb {self} detonation", game.logics, exploding_bomb_interval, self.remove)
+        # log(f"WHAT THE HELL TIMER {t}")
+        for delta in self.blast_pattern.coordinates:
+            coordinate = position + delta
+            e = level.tile_occupant[coordinate]
+            if e:
+                e.on_frozen(self, position)
+
+        if self.occupant:
+            self.occupant.on_frozen(self, position)
+
 
 class ContactBomb(Bomb):
     sprite_name = 'contact-bomb'
+    frozen = False
 
     def on_blasted(self, bomb, position):
         # explicitly pass over FloatingPlatform.on_blasted
         super(FloatingPlatform, self).on_blasted(bomb, position)
         self.detonate()
 
-    def on_pushed_into_something(self, tile, occupant):
-        log(f"contact bomb pushed onto {tile} {occupant}! kaboom!")
+    def on_pushed_into_something(self):
+        log(f"{self} contact bomb pushed onto something! kaboom!")
+        if self.frozen:
+            log(f"{self} is frozen! ignoring.")
+            return False
         self.detonate()
+        return True
+
+    def on_frozen(self, bomb, position):
+        log(f"{self} has frozen!  desensitize to contact.")
+        self.set_freeze_timer(self.on_unfreeze)
+        self.frozen = True
+
+    def on_unfreeze(self):
+        log(f"{self} has unfrozen!  become sensitive again.")
+        self.frozen = False
+        self.animate_if_on_moving_water()
+
 
 class RemoteControlBomb(Bomb):
     sprite_name = 'timed-bomb'
