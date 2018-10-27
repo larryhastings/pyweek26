@@ -10,6 +10,7 @@ import pyglet.window.key as key
 
 from . import animation
 from .scene import AnchoredImg
+from .ninepatch import NinePatch
 
 
 BODY_FONT = 'Edo'
@@ -171,18 +172,41 @@ class IntroScreen(Screen):
     SPRITES = [
         AnchoredImg('dynamite-valley'),
         AnchoredImg('big-go-bomb', anchor_y=0),
+        'box-background',
     ]
 
+    # Tan
     BGCOLOR = 0xaa / 255, 0x99 / 255, 0x82 / 255
+
+    # Blue
+    BGCOLOR = 66 / 255, 125 / 255, 193 / 255
+
+    BGCOLOR = 0, 0, 0
 
     def __init__(self, window, map, on_finished=None):
         self.map = map
         super().__init__(window, on_finished=on_finished)
+        self.box_bg = NinePatch(
+            self.sprites['box-background'],
+            border_size=10
+        )
+
+    def on_draw(self):
+        gl.glClearColor(*self.BGCOLOR, 0)
+        self.window.clear()
+        self.box_bg.draw(
+            80,
+            80,
+            self.window.width - 160,
+            self.window.height - 160
+        )
+        self.batch.draw()
+        return EVENT_HANDLED
 
     def start(self):
         self.title = pyglet.sprite.Sprite(
             self.sprites['dynamite-valley'],
-            x=self.window.width // 2 - 100,
+            x=self.window.width // 2 - 120,
             y=self.window.height - 80,
             batch=self.batch,
         )
@@ -227,7 +251,7 @@ class IntroScreen(Screen):
             x=self.window.width // 2,
             y=self.window.height - 200,
             font_name=BODY_FONT,
-            font_size=30,
+            font_size=40,
             anchor_x='center',
             anchor_y='center',
             color=(0, 0, 0, 255),
@@ -238,7 +262,7 @@ class IntroScreen(Screen):
             x=self.window.width // 2,
             y=self.window.height - 300,
             font_name=BODY_FONT,
-            font_size=20,
+            font_size=22,
             anchor_x='center',
             anchor_y='center',
             color=self.HIGHLIGHT_TEXT,
@@ -246,8 +270,8 @@ class IntroScreen(Screen):
         )
         self.author_label = Label(
             'Created by ' + self.map.metadata.get('author', 'Larry & Dan'),
-            x=20,
-            y=20,
+            x=100,
+            y=100,
             font_name=BODY_FONT,
             font_size=20,
             color=self.HIGHLIGHT_TEXT,
@@ -380,7 +404,3 @@ class GameWonScreen(Screen):
         self.log(f"on_key_press {k} {modifiers}")
         if k == key.SPACE:
             self.end()
-
-    def on_mouse_press(self, *args):
-        # TODO: only when you click the bomb
-        self.end()
