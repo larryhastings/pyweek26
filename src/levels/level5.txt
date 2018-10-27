@@ -1,0 +1,27 @@
+.vt#TD>>>>>>
+.v####^###..
+>L###.^..#..
+t/##..^..#..
+.v....^..#..
+.v....^..#..
+rv....^.CS..
+Dv....TtRR..
+.v>>>v>>>>>>
+R###tv^.....
+!####v^D....
+c....v^.....
+.!#!.>^.....
+
+Legend
+D MapWater + Dam
+/ MapWaterCurrentDown + Dam
+L MapWaterCurrentDown + Log
+c MapGrass + ContactBomb
+! MapGrass + TimedBomb.factory(lit=False)
+C MapGrass + Dispenser.factory(TimedBomb)
+r MapWater + Scenery.factory('bullrush')
+R MapGrass + Scenery.factory('rock')
+
+:title: All that way
+:author: mauve
+:hint: Sometimes timing is very important
