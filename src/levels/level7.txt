@@ -28,3 +28,4 @@ R MapGrass + Scenery.factory('rock')
 :title: A bend in the river
 :author: mauve
 :hint: There's a touch of ice up in these mountains
+:next: level8
