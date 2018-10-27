@@ -257,14 +257,18 @@ class IntroScreen(Screen):
             color=(0, 0, 0, 255),
             batch=self.batch,
         )
+
         self.hint_label = Label(
             self.map.metadata.get('hint', 'Destroy all the beaver dams!'),
             x=self.window.width // 2,
             y=self.window.height - 300,
+            width=self.window.width - 200,
             font_name=BODY_FONT,
             font_size=22,
             anchor_x='center',
             anchor_y='center',
+            multiline=True,
+            align='center',
             color=self.HIGHLIGHT_TEXT,
             batch=self.batch,
         )
