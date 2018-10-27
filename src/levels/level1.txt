@@ -10,12 +10,13 @@ B^#....d....
 <<#.##2..###
 #S#.##2#@###
 .C#.T###....
-.##.........
+.#!.........
 
 Legend
 L MapWaterCurrentLeft + Log
 X MapWaterCurrentUp + Dam
-C MapGrass + Dispenser.factory(TimedBomb)
+C MapGrass + Dispenser.factory(ContactBomb)
+! MapGrass + TimedBomb.factory(lit=False)
 1 MapWaterCurrentRight + TimedBomb
 2 MapWaterCurrentUp + TimedBomb
 
