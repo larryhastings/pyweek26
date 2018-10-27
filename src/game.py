@@ -357,7 +357,7 @@ def log(*a):
     elapsed = time.time() - log_start_time
     s = " ".join(str(x) for x in a)
     line = f"[{elapsed:07.3f}:{game.logics.counter:5}] {fn}()@{lineno} {s}"
-    # print(line)
+    print(line)
     print(line, file=_logfile)
 
 if not __debug__:
@@ -556,9 +556,9 @@ class Level:
         if game.paused:
             return
         log(f"{self} Pausing game.")
+        game.pause()
         self.on_esc_pressed = self.unpause
         self.on_y_pressed = title_screen
-        game.pause()
         game_screen.display_big_text_and_wait("PAUSED", "Abort game? Press Esc to resume game, press Y to abort game.")
 
     def unpause(self):
@@ -2480,7 +2480,7 @@ class GameScreen(Screen):
 
     def on_key_press(self, k, modifiers):
         if k == key.SPACE:
-            log("Handling Space with big text")
+            log(f"{self} Handling Space with big text")
             return self.handle_big_text_callback("on_space_pressed")
 
         if k == key.ESCAPE:
@@ -2498,7 +2498,8 @@ class GameScreen(Screen):
             return pyglet.event.EVENT_HANDLED
 
         if k == key.Y:
-            log("Handling Y with big text")
+            log(f"{self} Handling Y with big text")
+            print(dir(level))
             return self.handle_big_text_callback("on_y_pressed")
 
         if k == key.F5:
@@ -2541,16 +2542,18 @@ class GameScreen(Screen):
         self.batch.draw()
 
 
+_title_screen = None
+
 def title_screen_finished():
-    global title_screen
-    next_level = title_screen.next_level
-    title_screen = None
+    global _title_screen
+    next_level = _title_screen.next_level
+    _title_screen = None
     BackStoryScreen(window, on_finished=lambda: start_game(next_level))
 
 
 def title_screen():
-    global title_screen
-    title_screen = TitleScreen(
+    global _title_screen
+    _title_screen = TitleScreen(
         window,
         on_finished=title_screen_finished
     )
