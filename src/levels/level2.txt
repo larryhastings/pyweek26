@@ -23,4 +23,4 @@ R MapGrass + Scenery.factory('rock')
 :title: The Torrent
 :author: mauve
 :hint: Badgers make their dams near fast rivers
-:next: level3.txt
+:next: level2b.txt

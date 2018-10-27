@@ -1,0 +1,28 @@
+..vLB.......
+..vS#r......
+..v##.......
+v<<.........
+v..>>>>>>>>>
+v........>>D
+v>>>>>>>>>>v
+>>>^.r...^.v
+t###R....^.#
+.####>>>>^D.
+.F####r.....
+......#r....
+.bC>>>@*....
+
+Legend
+D MapWater + Dam
+L MapWaterCurrentLeft + Log
+X MapWaterCurrentUp + Dam
+C MapGrass + Dispenser.factory(ContactBomb)
+F MapGrass + Dispenser.factory(FreezeBomb)
+* MapGrass + Dispenser.factory(RemoteControlBomb)
+r MapWater + Scenery.factory('bullrush')
+R MapGrass + Scenery.factory('rock')
+
+:title: The Pond
+:author: mauve
+:hint: Why does Ol' Joe even have these bombs?
+:next: level3.txt
