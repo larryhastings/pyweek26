@@ -947,7 +947,7 @@ class Entity:
             else:
                 position = self.actor.position
             log(f"{self} occupant {self.occupant}, by transitivity, has also been frozen. (at position {position})")
-            self.occupant.on_frozen(self, bomb, position)
+            self.occupant.on_frozen(bomb, position)
 
     def set_freeze_timer(self, callback):
         if self.freeze_timer:
@@ -1176,6 +1176,14 @@ class Player(Entity):
                 )
             level.player_died()
 
+    def on_frozen(self, bomb, position):
+        if not self.dead:
+            if self.standing_on is bomb:
+                self.drown(frozen=True)
+            else:
+                self.actor.play('pc-frozen')
+                self.on_died()
+
     def on_blasted(self, bomb, position):
         if not self.dead:
             if self.standing_on is bomb:
@@ -1184,13 +1192,13 @@ class Player(Entity):
                 self.actor.play('pc-smouldering')
                 self.on_died()
 
-    def drown(self):
+    def drown(self, frozen=False):
         if not self.dead:
             position = self.position
             self.on_died()
             self.actor.delete()
             self.remove()
-            DrowningPC(position)
+            DrowningPC(position, frozen=frozen)
 
     def push_bomb(self, bomb):
         """Pick up a bomb."""
@@ -1783,8 +1791,12 @@ class Log(FloatingPlatform):
 
 
 class DrowningPC(Log):
+    def __init__(self, position, frozen=False):
+        self.sprite_name = 'pc-frozen-floating' if frozen else 'pc-drowning'
+        super().__init__(position)
+
     def make_actor(self):
-        self.actor = scene.spawn_player(self.position, 'pc-drowning')
+        self.actor = scene.spawn_player(self.position, self.sprite_name)
 
 
 class Bomb(FloatingPlatform):
