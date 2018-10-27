@@ -17,6 +17,7 @@ import pyglet.window.key as key
 import pyglet.window.key
 import pyglet.resource
 from pyglet import clock
+from pyglet.text import Label
 
 from dynamite import coords
 from dynamite.coords import map_to_screen
@@ -26,7 +27,7 @@ import dynamite.scene
 from dynamite.maploader import load_map
 from dynamite.vec2d import Vec2D
 from dynamite.animation import animate as tween
-from dynamite.titles import TitleScreen, Screen, IntroScreen, BackStoryScreen
+from dynamite.titles import TitleScreen, Screen, IntroScreen, BackStoryScreen, BODY_FONT
 
 TITLE = "Dynamite Valley"
 
@@ -458,6 +459,7 @@ class Level:
     def __init__(self):
         self.start = time.time()
         self.player = None
+        self.n_dams = 0
 
     def get(self, pos):
         return self.map.get(pos) or self.DEFAULT
@@ -935,10 +937,12 @@ class Dam(Entity):
     def __init__(self, position):
         super().__init__(position)
         self.actor = scene.spawn_static(self.position, 'beaver-dam')
+        level.n_dams += 1
 
     def on_blasted(self, bomb, position):
         super().on_blasted(bomb, position)
         self.actor.delete()
+        level.n_dams -= 1
         self.position = None
 
 
@@ -2031,7 +2035,35 @@ class GameScreen(Screen):
         self.wall = pyglet.sprite.Sprite(
             pyglet.resource.image('canyon-wall.png'),
             x=0,
-            y=self.window.height - 100
+            y=self.window.height - 100,
+        )
+
+        board = pyglet.resource.image('board.png')
+        self.board = pyglet.sprite.Sprite(
+            board,
+            x=10,
+            y=self.window.height - 10 - board.height,
+            batch=self.batch,
+            group=pyglet.graphics.OrderedGroup(1),
+        )
+        self.hud_label = Label(
+            self.hud_text(),
+            x=board.width // 2 + 10,
+            y=self.board.y + 11,
+            font_name=BODY_FONT,
+            font_size=20,
+            anchor_x='center',
+            anchor_y='bottom',
+            color=(0, 0, 0, 255),
+            batch=self.batch,
+            group=pyglet.graphics.OrderedGroup(2)
+        )
+
+    def hud_text(self):
+        return (
+            f'{level.n_dams} dams remaining'
+            if level.n_dams != 1
+            else f'{level.n_dams} dam remaining'
         )
 
     def on_key_press(self, k, modifiers):
@@ -2063,6 +2095,9 @@ class GameScreen(Screen):
             return
 
         scene.draw()
+
+        self.hud_label.text = self.hud_text()
+        self.batch.draw()
 
 
 if len(sys.argv) > 1:
