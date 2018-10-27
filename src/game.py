@@ -75,6 +75,21 @@ pyglet.resource.add_font('edo.ttf')
 LevelRenderer.load()
 FlowParticles.load()
 
+cant_play_audio = False
+
+class SafePlayer:
+    def __init__(self, *a, **k):
+        try:
+            self.media = pyglet.resource.media(*a, **k)
+        except pyglet.media.sources.riff.WAVEFormatException:
+            global cant_play_audio
+            cant_play_audio = True
+            self.media = None
+
+    def play(self):
+        if self.media:
+            self.media.play()
+
 
 remapped_keys = {
     key.ESCAPE: key.ESCAPE,
@@ -1279,8 +1294,8 @@ class Player(Entity):
         log(f"{self} can {verb} space!  it's navigable, and current occupant is {occupant}.")
         return True
 
-    thud = pyglet.resource.media('thud.wav', streaming=False)
-    splash = pyglet.resource.media('splash.wav', streaming=False)
+    thud = SafePlayer('thud.wav', streaming=False)
+    splash = SafePlayer('splash.wav', streaming=False)
 
     def on_key(self, k):
         log(f"{self} on key {key_repr(k)}")
@@ -1860,7 +1875,7 @@ class Bomb(FloatingPlatform):
             standing_on.occupant = None
             standing_on = None
 
-    explosion = pyglet.resource.media('explosion2.wav', streaming=False)
+    explosion = SafePlayer('explosion2.wav', streaming=False)
 
     def detonation_effects(self):
         self.explosion.play()
@@ -2420,7 +2435,7 @@ else:
 
 
 def play_ambient(dt=0):
-    ambient = pyglet.resource.media('ambient.mp3', streaming=True)
+    ambient = SafePlayer('ambient.mp3', streaming=True)
     ambient.play()
 
 play_ambient()
