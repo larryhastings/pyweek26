@@ -77,8 +77,8 @@
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
      inkscape:zoom="1"
-     inkscape:cx="305.00675"
-     inkscape:cy="1111.3337"
+     inkscape:cx="946.57993"
+     inkscape:cy="426.71064"
      inkscape:document-units="px"
      inkscape:current-layer="g4189"
      showgrid="false"
@@ -95,7 +95,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -107,6 +107,15 @@
        id="g4189"
        transform="matrix(0.9984389,-0.05585479,0.05585479,0.9984389,-26.954349,-9.68992)"
        clip-path="none">
+      <path
+         style="color:#000000;clip-rule:nonzero;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;mix-blend-mode:normal;color-interpolation:sRGB;color-interpolation-filters:linearRGB;solid-color:#000000;solid-opacity:1;fill:#ffffff;fill-opacity:1;fill-rule:evenodd;stroke:#b3b3b3;stroke-width:3.06931877;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;color-rendering:auto;image-rendering:auto;shape-rendering:auto;text-rendering:auto;enable-background:accumulate"
+         d="m 1073.3898,612.52718 -19.9367,18.43699 -32.7712,-13.37845 -8.5798,21.44603 -37.73665,-7.18584 3.61747,22.3538 -39.00666,-0.29059 15.45801,21.07564 -36.45951,6.63396 25.78793,17.73327 -30.34213,12.90753 33.59116,12.65595 -21.25402,17.92031 38.10685,6.33821 -10.08607,21.17557 38.89323,-0.59782 2.06834,22.35926 35.87125,-7.47639 14.0206,21.3559 29.34,-13.62415 24.601,18.26079 19.9351,-18.43708 32.7729,13.37855 8.5781,-21.44613 7.7185,1.47066 c 25.0633,33.82692 84.9321,32.61948 78.6326,28.92402 -4.5987,-2.69778 -28.2328,-24.40954 -35.3049,-45.437 l 22.0813,0.16505 -15.4597,-21.07575 36.4595,-6.63395 -25.7879,-17.73327 30.3422,-12.90948 -33.5913,-12.654 21.2541,-17.9203 -38.1068,-6.33822 10.0877,-21.17547 -38.8949,0.59772 -2.0666,-22.36112 -35.8731,7.47825 -14.0205,-21.3559 -29.34,13.62415 z"
+         id="path18825"
+         inkscape:connector-curvature="0"
+         sodipodi:nodetypes="cccccccccccccccccccccccccccccccccccccccccc"
+         inkscape:export-filename="/home/mauve/dev/pyweek26/src/images/bubble-death.png"
+         inkscape:export-xdpi="89.971298"
+         inkscape:export-ydpi="89.971298" />
       <g
          id="g4510"
          transform="translate(-54.062423,-54.104107)"
@@ -1197,6 +1206,50 @@
            transform="matrix(-0.99999133,-0.00416685,-0.00416685,0.99999133,721.27981,288.89826)"
            id="path13412"
            inkscape:connector-curvature="0" />
+      </g>
+      <text
+         transform="matrix(0.9984389,0.05585479,-0.05585479,0.9984389,0,0)"
+         sodipodi:linespacing="140%"
+         id="text18792"
+         y="636.98138"
+         x="1128.304"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:31.92939377px;line-height:139.99999762%;font-family:Edo;-inkscape-font-specification:Edo;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+         xml:space="preserve"><tspan
+           id="tspan18805"
+           y="636.98138"
+           x="1128.304"
+           sodipodi:role="line">JIM? JIM?!</tspan><tspan
+           id="tspan18813"
+           y="681.68256"
+           x="1128.304"
+           sodipodi:role="line">ARE YOU OKAY?</tspan></text>
+      <g
+         transform="translate(632.09072,374.63386)"
+         id="g18815"
+         inkscape:export-filename="/home/mauve/dev/pyweek26/src/images/bubble-win.png"
+         inkscape:export-xdpi="89.971298"
+         inkscape:export-ydpi="89.971298">
+        <path
+           inkscape:connector-curvature="0"
+           id="path18817"
+           d="m 569.53006,473.08004 c 90.85406,5.08257 161.80206,48.40717 159.07582,97.14011 -2.72623,48.73296 -78.06375,83.87402 -168.91781,78.79146 l -19.19082,-1.07358 c -41.06863,-2.29747 -78.06765,-12.41068 -106.03522,-27.30346 -20.69196,21.71383 -59.41147,15.1321 -54.37394,13.19519 4.26965,-1.64171 20.24933,-17.25734 25.50728,-33.13887 -16.22219,-14.81637 -25.17558,-31.98797 -24.17392,-49.89296 2.72622,-48.73296 78.06375,-83.87403 168.91779,-78.79146 l 19.19082,1.07357 z"
+           style="color:#000000;clip-rule:nonzero;display:inline;overflow:visible;visibility:visible;opacity:1;isolation:auto;mix-blend-mode:normal;color-interpolation:sRGB;color-interpolation-filters:linearRGB;solid-color:#000000;solid-opacity:1;fill:#ffffff;fill-opacity:1;fill-rule:evenodd;stroke:#b3b3b3;stroke-width:3.27272677;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1;color-rendering:auto;image-rendering:auto;shape-rendering:auto;text-rendering:auto;enable-background:accumulate" />
+        <text
+           transform="matrix(0.9984389,0.05585479,-0.05585479,0.9984389,0,0)"
+           sodipodi:linespacing="140%"
+           id="text18819"
+           y="512.99506"
+           x="583.11188"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:31.92939377px;line-height:139.99999762%;font-family:Edo;-inkscape-font-specification:Edo;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+           xml:space="preserve"><tspan
+             id="tspan18821"
+             y="512.99506"
+             x="583.11188"
+             sodipodi:role="line">Great JOB,</tspan><tspan
+             id="tspan18823"
+             y="558.51477"
+             x="583.11188"
+             sodipodi:role="line">RANGER JIM!</tspan></text>
       </g>
     </g>
     <path

@@ -494,11 +494,11 @@ class Level:
         except pyglet.resource.ResourceNotFoundException:
             return self.game_won()
 
-        game_screen.display_big_text_and_wait("LEVEL COMPLETE!")
+        game_screen.show_level_complete()
         self.on_space_pressed = next_level
 
     def player_died(self):
-        game_screen.display_big_text_and_wait("YOU DIED!")
+        game_screen.show_death_msg()
         self.on_space_pressed = reload_level
 
     def game_won(self):
@@ -2217,9 +2217,14 @@ def timer_callback(dt):
 pyglet.clock.schedule_interval(timer_callback, callback_interval)
 
 class GameScreen(Screen):
+    SPRITES = [
+        dynamite.scene.AnchoredImg('canyon-wall', anchor_x=0, anchor_y=0),
+        dynamite.scene.AnchoredImg('bubble-win', anchor_x=0, anchor_y=0),
+        dynamite.scene.AnchoredImg('bubble-death', anchor_x=353, anchor_y=0),
+    ]
     def start(self):
         self.wall = pyglet.sprite.Sprite(
-            pyglet.resource.image('canyon-wall.png'),
+            self.sprites['canyon-wall'],
             x=0,
             y=self.window.height - 100,
         )
@@ -2245,6 +2250,38 @@ class GameScreen(Screen):
             color=(0, 0, 0, 255),
             batch=self.batch,
             group=pyglet.graphics.OrderedGroup(2)
+        )
+
+    def show_death_msg(self):
+        self.display_big_text_and_wait("YOU DIED!")
+        self.bubble = pyglet.sprite.Sprite(
+            self.sprites['bubble-death'],
+            x=self.window.width - 30,
+            y=30,
+            batch=self.batch,
+        )
+        self.bubble.visible = False
+        self.clock.schedule_once(self._show_bubble, 0.5)
+
+    def show_level_complete(self):
+        game_screen.display_big_text_and_wait("LEVEL COMPLETE!")
+        self.bubble = pyglet.sprite.Sprite(
+            self.sprites['bubble-win'],
+            x=30,
+            y=30,
+            batch=self.batch,
+        )
+        self.bubble.visible = False
+        self.clock.schedule_once(self._show_bubble, 0.5)
+
+    def _show_bubble(self, dt):
+        self.bubble.visible = True
+        self.bubble.scale = 0.1
+        self.clock.animate(
+            self.bubble,
+            'bounce_end',
+            duration=0.5,
+            scale=1,
         )
 
     def display_big_text_and_wait(self, big_text):
