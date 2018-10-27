@@ -441,6 +441,10 @@ class Level:
         for coord in self.coords():
             tile = self.get(coord)
             if tile.spawn_item:
+                occupant = level.tile_occupant[coord]
+                if occupant:
+                    assert isinstance(occupant, Claim)
+                    occupant.superceded()
                 o = tile.spawn_item(coord)
                 if isinstance(o, Player):
                     if self.player:
@@ -720,9 +724,6 @@ class Entity:
 
         self.on_position_changed()
 
-    def on_position_changed(self):
-        pass
-
     def fling(self, delta):
         """
         This pawn has been flung across the map!
@@ -753,6 +754,7 @@ class Entity:
         and the bomb is landing on a platform where we want to re-fling, that's
         what on_fling_completed() is for.
         """
+        occupant_is_a_claim = False
         for v in walk_vec2d_back_to_zero(delta):
             log(f"trying delta {v}")
             if not v:
@@ -760,7 +762,10 @@ class Entity:
                 return self.on_fling_failed(fling)
             fling = Fling(self, delta, v)
             occupant = level.tile_occupant[fling.destination]
-            if (not occupant) or (occupant is self.claim) or self.fling_destination_is_okay(fling, occupant):
+            occupant_is_a_claim = isinstance(occupant, Claim)
+            if ((not occupant)
+                or occupant_is_a_claim
+                or self.fling_destination_is_okay(fling, occupant)):
                 break
             log(f"tile wasn't okay, occupant is {occupant}")
 
@@ -769,6 +774,8 @@ class Entity:
         self._fling = fling
         if self.animator:
             log(f"{self} being animated to new position.")
+            if occupant_is_a_claim:
+                occupant.superceded()
             self.claim.position = fling.destination
             self.animator.cancel()
             self.animator.animate(
@@ -836,6 +843,24 @@ class Entity:
         self.unqueue_for_tile()
         self.position = None
 
+    def on_position_changed(self):
+        pass
+
+    def on_platform_animated(self, position):
+        pass
+
+    def on_platform_moved(self, position):
+        pass
+
+    def on_blasted(self, bomb, position):
+        pass
+
+    def on_pushed_into_something(self, other):
+        pass
+
+    def on_something_pushed_into_us(self, other):
+        pass
+
 
 class Claim(Entity):
     """
@@ -855,14 +880,20 @@ class Claim(Entity):
     def __repr__(self):
         return f'Claim({self.owner!r})'
 
-    def on_platform_animated(self, position):
-        pass
-
-    def on_platform_moved(self, position):
-        pass
-
-    def on_blasted(self, bomb, position):
-        pass
+    def superceded(self):
+        """
+        Someone has superceded our claim!
+        They are more important!
+        Since our owner wanted to move here,
+        and now we can't,
+        register our desire to move there.
+        """
+        position = self.position
+        log(f"{self} withdrawing claim on {position}!")
+        assert level.tile_occupant[position] == self
+        level.tile_occupant[position] = None
+        self._position = None
+        self.owner.queue_for_tile(position)
 
 
 
@@ -1349,43 +1380,40 @@ class FloatingPlatform(Entity):
         self.moving = True
         self.moving_to = self.new_position
 
-    def should_we_start_floating_to_position(self, position,
+    def what_would_block_us_from_moving_to(self, position,
             okay_if_occupant_is_floating_away=True):
         tile = level.get(position)
         occupant = level.tile_occupant[position]
         prefix = f"{self} should we start floating to {position}? "
         if not tile.water:
             log(f"{prefix} no! it's not water.")
-            return False
+            return tile
         # okay, it's water.
         if not occupant:
             log(f"{prefix} yes! it's unoccupied water.")
-            return True
+            return None
         if occupant == self.claim:
-            log(f"{prefix} yes!  we have claim to that space.")
-            return True
+            log(f"{prefix} yes!  we have claim to that space (occupant is {occupant}).")
+            return None
         if not okay_if_occupant_is_floating_away:
             # it's occupied, and right now we don't care
             # whether or not the occupant is floating away.
-            log(f"{prefix} no!  it's occupied and we don't care if it's moving away.")
-            return False
+            log(f"{prefix} no!  it's occupied by {occupant} and we don't care if it's moving away.")
+            return occupant
 
         # if the occupant is floating away from us,
         # then they'll vacate by the time we get there,
         # so maybe it'll all be fine.
         assert occupant.position == position
         if not occupant.moving:
-            log(f"{prefix} no!  it's occupied and the occupant isn't moving.")
-            return False
-        delta = occupant.moving_to - position
-        the_square_away_from_us = position + delta
+            log(f"{prefix} no!  it's occupied by {occupant} and the occupant isn't moving.")
+            return occupant
         if (occupant.moving
-            and occupant.moving_to == the_square_away_from_us):
-            log(f"{prefix} yes!  it's occupied but the occupant is moving away.")
-            return True
-        log(f"{prefix} no! it's occupied and the occupant is moving but not away.")
-        log("{self} is moving into {occupant} which is moving to {the_square_away_from_us}")
-        return False
+            and occupant.moving_to == self.position):
+            log(f"{prefix} no! it's occupied by {occupant} and the occupant is moving towards us.")
+            return None
+        log(f"{prefix} yes!  it's occupied by {occupant}, but the occupant is moving out, and not towards us.")
+        return occupant
 
     def animate_if_on_moving_water(self):
 
@@ -1404,16 +1432,23 @@ class FloatingPlatform(Entity):
 
         new_position = self.position + tile.current
 
-        if self.should_we_start_floating_to_position(new_position):
+        blocker = self.what_would_block_us_from_moving_to(new_position)
+        if not blocker:
             self.move_with_animation(new_position, water_speed_logics)
             return
 
         # okay, we're being pushed into something.
-        self.on_pushed_into_something()
+        assert isinstance(blocker, Entity)
+        self.on_pushed_into_something(blocker)
+        blocker.on_something_pushed_into_us(self)
         return
 
-    def on_pushed_into_something(self):
-        log(f"bomb pushed onto something.  we don't really care.")
+    def on_pushed_into_something(self, other):
+        log(f"{self} pushed into {other}.  we don't really care.")
+        return False
+
+    def on_something_pushed_into_us(self, other):
+        log(f"{self} was pushed into by {other}.  we don't really care.")
         return False
 
     def _animation_halfway(self):
@@ -1426,11 +1461,13 @@ class FloatingPlatform(Entity):
             self.animator.pause()
             return
 
-        if not self.should_we_start_floating_to_position(self.new_position,
-            okay_if_occupant_is_floating_away=False):
+        blocker = self.what_would_block_us_from_moving_to(self.new_position,
+            okay_if_occupant_is_floating_away=False)
+        if blocker:
             tile = level.get(self.new_position)
             log(f"{self} we can't continue floating to {self.new_position}!")
-            self.on_pushed_into_something()
+            self.on_pushed_into_something(blocker)
+            blocker.on_something_pushed_into_us(self)
             return
 
         log(f"{self} halfway, proceeding.")
@@ -1514,6 +1551,8 @@ class FloatingPlatform(Entity):
             log(f"{self} was flung, but landed on {standing_on}, so we re-fling!")
             self.fling(fling.original_delta)
 
+    def on_platform_animated(self, position):
+        pass
 
 
 class Log(FloatingPlatform):
@@ -1539,6 +1578,8 @@ class Bomb(FloatingPlatform):
     actor = None
 
     def __init__(self, position):
+        self.current_sprite_name = None
+
         super().__init__(position)
 
         self.actor.z = 50
@@ -1551,8 +1592,10 @@ class Bomb(FloatingPlatform):
         suffix = "-float" if self.floating else ""
         if self.actor:
             sprite_name = f'{self.sprite_name}{suffix}'
-            log(f"{self} now playing {sprite_name}")
-            self.actor.play(sprite_name)
+            if self.current_sprite_name != sprite_name:
+                log(f"{self} now playing {sprite_name}")
+                self.actor.play(sprite_name)
+                self.current_sprite_name = sprite_name
 
     def interact(self, player):
         """Allow the player to pick up the bomb.
@@ -1566,24 +1609,23 @@ class Bomb(FloatingPlatform):
             self.actor.delete()
             self.remove()
 
-    def on_level_loaded(self):
-        # when a bomb spawns on moving water,
-        # if the space it wants to animate to is open,
-        # it stakes its "claim" there.
-        # but maybe next we spawn something on that space!
-        # so:
-        #   if our claim has a position set,
-        #     and that position now has something
-        #     on it besides our claim:
-        #     withdraw our claim and queue for the tile.
-        claim_position = self.claim.position
-        if not claim_position:
-            return
-        occupant_at_claim = level.tile_occupant[claim_position]
-        if occupant_at_claim != self.claim:
-            log(f"{self} withdrawing claim after level loaded, {claim_position} occupied by {occupant_at_claim}")
-            self.claim._position = None
-            self.queue_for_tile(claim_position)
+    # def on_level_loaded(self):
+    #     # when a bomb spawns on moving water,
+    #     # if the space it wants to animate to is open,
+    #     # it stakes its "claim" there.
+    #     # but maybe next we spawn something on that space!
+    #     # so:
+    #     #   if our claim has a position set,
+    #     #     and that position now has something
+    #     #     on it besides our claim:
+    #     #     withdraw our claim and queue for the tile.
+    #     claim_position = self.claim.position
+    #     if not claim_position:
+    #         return
+    #     occupant_at_claim = level.tile_occupant[claim_position]
+    #     if occupant_at_claim != self.claim:
+    #         log(f"{self} withdrawing claim after level loaded, {claim_position} occupied by {occupant_at_claim}")
+    #         self.claim.superceded()
 
     def detonate(self):
         if self.detonated:
@@ -1762,13 +1804,19 @@ class ContactBomb(Bomb):
         super(FloatingPlatform, self).on_blasted(bomb, position)
         self.detonate()
 
-    def on_pushed_into_something(self):
-        log(f"{self} contact bomb pushed onto something! kaboom!")
+    def in_contact_with_entity(self, entity):
         if self.frozen:
-            log(f"{self} is frozen! ignoring.")
+            log(f"{self} contact bomb and {entity} are pushed together! but we're frozen right now!  so ignore it.  FOR NOW")
             return False
+        log(f"{self} contact bomb and {entity} are pushed together! kaboom!")
         self.detonate()
         return True
+
+    def on_pushed_into_something(self, other):
+        return self.in_contact_with_entity(other)
+
+    def on_something_pushed_into_us(self, other):
+        return self.in_contact_with_entity(other)
 
     def on_frozen(self, bomb, position):
         log(f"{self} has frozen!  desensitize to contact.")

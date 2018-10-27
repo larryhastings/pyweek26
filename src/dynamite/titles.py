@@ -243,7 +243,7 @@ class IntroScreen(Screen):
         self.log(f"on_key_press {k} {modifiers}")
         self.end()
 
-    def on_mouse_press(self, k, modifiers):
+    def on_mouse_press(self, *args):
         # TODO: only when you click the bomb
         self.end()
 
