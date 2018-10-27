@@ -17,9 +17,16 @@ import pyglet.resource
 import pyglet.window.key
 import pyglet.window.key as key
 
+# suppress pygame printing its banner :p
+import builtins
+old_print = print
+def print(*a): pass
+builtins.print = print
 import pygame.mixer
 pygame.mixer.pre_init(frequency=44100, size=-16, channels=2)
 pygame.mixer.init()
+print = old_print
+builtins.print = old_print
 
 
 from dynamite import coords
