@@ -1673,7 +1673,7 @@ class FloatingPlatform(Entity):
         if (occupant.moving
             and occupant.moving_to == self.position):
             log(f"{prefix} no! it's occupied by {occupant} and the occupant is moving towards us.")
-            return Occupant
+            return occupant
         log(f"{prefix} yes!  it's occupied by {occupant}, but the occupant is moving out, and not towards us.")
         return None
 
@@ -1709,8 +1709,8 @@ class FloatingPlatform(Entity):
 
 
     def on_pushed_into_something(self, other):
-        log(f"{self} pushed into {other}.  we don't really care.")
-        return False
+        log(f"{self} pushed into {other}.  we don't allow it.")
+        return True
 
     def on_something_pushed_into_us(self, other):
         log(f"{self} was pushed into by {other}.  we don't really care.")
@@ -1729,11 +1729,12 @@ class FloatingPlatform(Entity):
         blocker = self.what_would_block_us_from_moving_to(self.new_position,
             okay_if_occupant_is_floating_away=False)
         if blocker:
-            tile = level.get(self.new_position)
             log(f"{self} we can't continue floating to {self.new_position}! blocked by {blocker}.")
             self.on_pushed_into_something(blocker)
             if isinstance(blocker, Entity):
                 blocker.on_something_pushed_into_us(self)
+            self.waiting_halfway = True
+            self.animator.pause()
             return
 
         log(f"{self} halfway, proceeding.")
