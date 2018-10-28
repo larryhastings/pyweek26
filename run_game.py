@@ -19,15 +19,15 @@ print = old_print
 builtins.print = old_print
 
 import os.path
+import subprocess
 
 argv0dir = os.path.dirname(sys.argv[0])
 srcdir = os.path.abspath(argv0dir + "/src")
-sys.path.insert(0, srcdir)
 os.chdir(srcdir)
 
-try:
-    import game
-except ImportError:
-    sys.exit("Couldn't run Dynamite Valley!  Not sure why, sorry.")
+interpreter = sys.executable or "python3"
+cmdline = [interpreter, "-O", "game.py"]
+cmdline.extend(sys.argv[1:])
+result = subprocess.run(cmdline)
 
-sys.exit(game.main(sys.argv[1:]))
+sys.exit(result.returncode)
