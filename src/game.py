@@ -527,6 +527,7 @@ class Level:
             return self.game_won()
 
         log(f"{self} level finished")
+        game.pause()
         game_screen.hide_hud()
         game_screen.display_big_text_and_wait("LEVEL COMPLETE!")
         game_screen.show_congratulations_bubble()
@@ -535,6 +536,7 @@ class Level:
 
     def player_died(self):
         log(f"{self} player was harmed")
+        game.pause()
         game_screen.display_big_text_and_wait("OOPS!")
         game_screen.show_oops_bubble()
         self.suppress_esc = True
@@ -542,6 +544,7 @@ class Level:
 
     def game_won(self):
         log(f"{self} you win!")
+        game.pause()
         game_screen.hide_hud()
         game_screen.display_big_text_and_wait("YOU WON!")
         game_screen.show_congratulations_bubble()
