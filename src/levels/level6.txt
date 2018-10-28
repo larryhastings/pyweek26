@@ -25,4 +25,4 @@ R MapGrass + Scenery.factory('rock')
 :title: The whirlpool
 :author: mauve
 :hint: Jim stumbles across a fast-flowing vortex
-:next: finished
+:next: level7
