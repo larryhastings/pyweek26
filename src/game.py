@@ -597,7 +597,7 @@ class Animator:
 
         self.timer = Timer("animator", self.clock, interval, self._complete, on_tick=self._on_tick)
         if halfway_callback:
-            self.halfway_timer = Timer("animator halfway", self.clock, interval / 2, self._halfway)
+            self.halfway_timer = Timer("animator halfway", self.clock, interval / 4, self._halfway)
 
         self.finished = False
 
@@ -1709,8 +1709,12 @@ class FloatingPlatform(Entity):
 
 
     def on_pushed_into_something(self, other):
-        log(f"{self} pushed into {other}.  we don't allow it.")
-        return True
+        v = isinstance(other, TileMeta)
+        log(
+            f"{self} pushed into {other}.",
+            "We disallow it because it's a tile" if v else "We allow it."
+        )
+        return v
 
     def on_something_pushed_into_us(self, other):
         log(f"{self} was pushed into by {other}.  we don't really care.")

@@ -456,7 +456,7 @@ class Static(Actor):
         'beaver-left',
         'beaver-right',
         AnchoredImg('beaver-dam', anchor_y=20),
-        'log',
+        AnchoredImg('log', anchor_y=14),
         AnchoredImg('dispenser-contact-bomb', anchor_y=30),
         AnchoredImg('dispenser-timed-bomb', anchor_y=30),
         AnchoredImg('dispenser-freeze-bomb', anchor_y=30),
