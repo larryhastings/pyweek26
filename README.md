@@ -31,6 +31,11 @@ requirements automatically by running this:
 
 Your mileage may vary!
 
+We recommend running Dynamite Valley with
+"python3 -O".  Pyglet's Open GL support occasionally,
+if rarely, throws assertion failures.  If you use
+the provided launcher `run_game.py` we do this for you.
+
 
 Controls
 --------
