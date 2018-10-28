@@ -896,7 +896,8 @@ class Entity:
             log(f"trying delta {v}")
             if not v:
                 log(f"fling failed, we walked back to zero without finding any viable spot.")
-                return self.on_fling_failed(fling)
+                self.on_fling_failed(fling)
+                return False
             fling = Fling(self, delta, v)
             occupant = level.tile_occupant[fling.destination]
             occupant_is_a_claim = isinstance(occupant, Claim)
@@ -928,6 +929,7 @@ class Entity:
             log(f"{self} has no animator, so we'll just jump to the flung spot.")
             assert not occupant, f"{self} wanted to be flung to {fling.destination} but we have no animator and the tile is occupied by {occupant}!"
             self.on_fling_completed()
+        return True
 
     def fling_destination_is_okay(self, fling, occupant):
         return False
@@ -1435,11 +1437,12 @@ class Player(Entity):
             if isinstance(bomb, RemoteControlBomb):
                 level.player.remote_control_bombs.append(bomb)
             if result is not True:
-                log(f"skipping bomb {bomb} across other bomb {result}")
+                log(f"{self} skipping bomb {bomb} across other bomb {result}")
                 delta = bomb_position - level.player.position
-                bomb.fling(delta)
+                result = bomb.fling(delta)
+                log(f"{self} flung bomb by {delta} result: {result}")
             else:
-                log(f"bomb {bomb} is fine where it is, not flinging/skipping.")
+                log(f"{self} bomb {bomb} is fine where it is, not flinging/skipping.")
             return
 
         delta = key_to_movement_delta.get(k)
@@ -1797,8 +1800,11 @@ class FloatingPlatform(Entity):
         if delta:
             # if queued for tile, unqueue
             log(f"{self} explosion will fling us by {delta}")
-            self.unqueue_for_tile()
-            self.fling(delta)
+            if self.fling(delta):
+                log(f"{self} fling {delta} worked!  unqueue for current tile.")
+                self.unqueue_for_tile()
+            else:
+                log(f"{self} fling {delta} failed!  don't do anything.")
         else:
             log(f"{self} explosion delta is {delta} so we're not flinging")
 
@@ -1819,8 +1825,8 @@ class FloatingPlatform(Entity):
             self.animate_if_on_moving_water()
         else:
             # re-fling!
-            log(f"{self} was flung, but landed on {standing_on}, so we re-fling!")
-            self.fling(fling.original_delta)
+            result = self.fling(fling.original_delta)
+            log(f"{self} was flung, but landed on {standing_on}, so we re-fling by original delta {fling.original_delta}! result: {result}")
 
     def on_platform_animated(self, position):
         pass
