@@ -43,6 +43,9 @@ unlit one is just lying on the ground.
 B drops a bomb into the square where Ranger Jim
 is facing.
 
+T detonates remote control bombs (the bombs with
+red lights on the top, and an aerial).
+
 Escape pauses the game.  While paused:
 * Escape unpauses.
 * Y quits back to the main menu.
