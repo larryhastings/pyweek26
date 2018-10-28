@@ -37,7 +37,7 @@ from dynamite.maploader import load_map
 from dynamite.vec2d import Vec2D
 from dynamite.animation import animate as tween
 from dynamite.titles import TitleScreen, Screen, IntroScreen, BackStoryScreen, GameWonScreen
-from dynamite.titles import BODY_FONT
+from dynamite.titles import BODY_FONT, savefile_remove
 
 TITLE = "Dynamite Valley"
 
@@ -550,6 +550,7 @@ class Level:
         game_screen.show_congratulations_bubble()
         self.suppress_esc = True
         self.on_space_pressed = title_screen
+        savefile_remove()
         # game.key_handler = self
         # GameWonScreen(window, on_finished=title_screen)
 
