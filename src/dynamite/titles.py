@@ -16,6 +16,29 @@ from .ninepatch import NinePatch
 
 QUICKSAVE_FILE = Path.cwd() / 'save.txt'
 
+def savefile_exists():
+    return QUICKSAVE_FILE.exists()
+
+def savefile_read():
+    return QUICKSAVE_FILE.read_text().strip()
+
+def savefile_save(level_name):
+    try:
+        QUICKSAVE_FILE.write_text(level_name)
+    except OSError:
+        print(
+            f"Warning: couldn't write to quicksave file {QUICKSAVE_FILE}!"
+        )
+
+def savefile_remove():
+    try:
+        if savefile_exists():
+            QUICKSAVE_FILE.unlink()
+    except OSError:
+        print(
+            f"Warning: couldn't remove quicksave file {QUICKSAVE_FILE}!"
+        )
+
 BODY_FONT = 'Edo'
 
 serial_number = 0
@@ -110,9 +133,6 @@ class TitleScreen(Screen):
         'valley-art',
     ]
 
-    def has_save(self):
-        return QUICKSAVE_FILE.exists()
-
     def start(self):
 
         valley = self.sprites['valley-art']
@@ -149,9 +169,9 @@ class TitleScreen(Screen):
         )
 
     def show_label(self):
-        if self.has_save():
+        if savefile_exists():
             msg = """\
-Press space to continue!\n
+Press space to continue your savegame\n
 N   new game         T    Tutorial"""
         else:
             msg = "Press T for Tutorial or N for new Game"
@@ -185,14 +205,13 @@ N   new game         T    Tutorial"""
         elif k == key.T:
             self.next_level = 'tutorial1'
         elif k == key.SPACE:
-            if self.has_save():
-                self.next_level = QUICKSAVE_FILE.read_text().strip()
-            else:
-                self.next_level = 'tutorial1'
+            if not savefile_exists():
+                return
+            self.next_level = savefile_read()
         else:
             return
 
-        self.log(f"on_key_press {k} {modifiers}")
+        self.log(f"{self} on_key_press {k} {modifiers}, loading next level {self.next_level}")
         self.end()
 
 
@@ -218,12 +237,7 @@ class IntroScreen(Screen):
             self.sprites['box-background'],
             border_size=10
         )
-        try:
-            QUICKSAVE_FILE.write_text(self.map.name)
-        except OSError:
-            print(
-                f"Warning: couldn't write to quicksave file {QUICKSAVE_FILE}!"
-            )
+        savefile_save(self.map.name)
 
     def on_draw(self):
         gl.glClearColor(*self.BGCOLOR, 0)
