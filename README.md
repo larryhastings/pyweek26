@@ -181,3 +181,5 @@ Some ideas we didn't have time to explore during PyWeek 26:
 * Giant Bombs, which blast all squares within a "Manhattan distance" of 2.
 
 * Moving beavers, which would swim back and forth in a predictable pattern.  Swimming beavers would push any floating object (including a Contact Bomb, which it would not set off).  Blasting a beaver would be an automatic level failure--you can't hurt the wildlife, you're a park ranger!
+
+* Flowing water would be stopped by dams.  There'd be flowing water leading up to a dam, and still water after it, and when you blew up the dam the still water would resume flowing.  Instead of designing the level that way (*this* flowing water starts flowing when *this* dam is destroyed) we were going to compute it.  Something like, start at every tile that is flowing water with a dam on it, and for all its neighbors that are flowing away from it, stop them flowing while the dam exists, then do that for *those* tiles.  Of course we'd need to only disable flowing on water tiles where all the incoming feeds of flowing water were disabled.
