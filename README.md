@@ -7,8 +7,8 @@ It's fall, and that means it's blasting season!
 
 The beavers here in Dynamite Valley Park have been
 working overtime, making dams!  If I've told you
-once, Ranger Jim, I've told you a thousand times--
-now get out there and blast those consarned dams!
+once, Ranger Jim, I've told you a thousand times--we need
+you to blast those consarned dams!
 
 Guide Ranger Jim around a series of levels infested
 with beaver dams damming up the waters of Dynamite
@@ -23,7 +23,7 @@ We sincerely hope you have fun playing!  Now get out there and wipe out those da
 The Basics
 ----------
 
-You play as Ranger Jim, a park ranger at Dynamite Valley Park.  It's fall, and that means beavers have built dams all over the park!  Your job: remove the dams!  With explosives!
+You play as Ranger Jim, a park ranger at Dynamite Valley Park.  Your job: remove the dams infesting the park's beautiful waterways!  With explosives!
 
 Every level has a number of "dams" floating in the water.  Ranger Jim has to destroy all the dams to advance to the next level.  If you complete all the levels, you win!
 
@@ -35,7 +35,7 @@ Both Dan and I played through the final version of the game, version 1.0.2.  Eve
 
 Note that on some levels you can put yourself into a situation where the level is no longer winnable.  For example, on some levels you only have a limited supply of bombs, and if you misuse them the level may no longer be winnable.  If you think that's happened, you should start the level over.
 
-Also, the first zip file release of "Dynamite Valley" had a game-breaking bug.  We guarantee that version *isn't* winnable!  We only guarantee versions 1.0.1 and newer are winnable.
+Also, the first zip file release of "Dynamite Valley" had a game-breaking bug.  We guarantee that version *isn't* winnable!  1.0.1 had a minor bug that could be worked around.  1.0.2 and anything newer should work great!
 
 
 Starting The Game
@@ -96,13 +96,13 @@ Bombs that Ranger Jim drops are automatically armed.  Ranger Jim can't pick up a
 
 There are four types of bombs in the game:
 
-* Timed Bombs are the most frequently-seen type of bomb.  They look like the classic movie bomb: a black circle with a small black cylinder near the top, and a fuse.  They detonate in 5 seconds after being dropped.  When "blasted", Timed Bombs are "flung" one space away.
+* Timed Bombs are the most frequently-seen type of bomb.  They look like the classic movie bomb: a black circle with a small black cylinder near the top, and a fuse.  They detonate 5 seconds after being dropped.  When "blasted", Timed Bombs are "flung" one space away.
 
-* Contact Bombs look like black spheres with little round nubs poking out in all directions.  They automatically detonate when they're pushed into something, or if they're blasted by another bomb.
+* Contact Bombs look like black spheres with little round nubs poking out in all directions.  They're very sensitive!  Contact Bombs automatically detonate when they're pushed into something, or when they're blasted by another bomb.
 
-* Remote Control Bombs look like Timed Bombs but with a red ring around the small cylinder at the top.  You can detonate an RC Bomb with the "T"rigger key.  RC Bombs detonate in the order you dropped them--if you drop five bombs, you have to press "T" five times to trigger them all.  Remote Control Bombs that are blasted are "flung" like Timed Bombs.
+* Remote Control Bombs look like Timed Bombs but with a red ring around the small cylinder at the top.  You detonate an RC Bomb with the "T"rigger key.  RC Bombs detonate one at a time, in the order you dropped them--if you drop five bombs, you have to press "T" five times to trigger them all.  Remote Control Bombs that are blasted are "flung" like Timed Bombs.
 
-* Freeze Bombs look like Timed Bombs, except they're white and they have light blue snowflakes drawn on the side.  They detonate in 2 seconds after being dropped.  Freeze Bombs that get "blasted" are "flung" like Timed Bombs.  However!  Instead of "blasting" their neighbors, Freeze Bombs "freeze" their neighbors:
+* Freeze Bombs look like Timed Bombs, except they're white and they have light blue snowflakes drawn on the side.  They detonate 2 seconds after being dropped.  Freeze Bombs that get "blasted" are "flung" like Timed Bombs.  However!  Instead of "blasting" their neighbors, Freeze Bombs "freeze" their neighbors:
 
   * Frozen Timed Bombs and Frozen Freeze Bombs pause their countdown for 5 seconds.
 
@@ -117,17 +117,17 @@ If Ranger Jim gets blasted or frozen, the level is over and you have to restart.
 Water and Floating Objects
 --------------------------
 
-Most water is still water.  However, some water is flowing in a particular direction.  You can tell what water is flowing water by paying attention to the ripples in the water: when the ripples are moving, that shows you what direction that patch water is flowing in.
+Most water is still water.  However, some water is flowing in a particular direction.  You can tell what water is flowing water by paying attention to the ripples in the water: when the ripples are moving, that shows you what direction that patch of water is flowing in.
 
-Flowing water will push objects along, like floating logs, or bombs that are dropped into water.  Objects in flowing water move at the rate of one screen tile per second.
+Flowing water will push objects along, like floating logs or bombs dropped into water.  Objects in flowing water move at the rate of one screen tile per second.
 
-Objects in flowing water that get pushed up against something get stuck.  Once the obstacle is removed the object will resume floating along.
+Objects in flowing water that get pushed up against something get stuck.  (Unless the object is a Contact Bomb--in which case, it explodes!)  Once the obstacle is removed the object will resume floating along.
 
 Ranger Jim can step on most floating objects.  There are only a few he can't, like beavers and bullrushes.  If Ranger Jim steps on a floating object that's in flowing water, he can ride on top!
 
 Ranger Jim can't pick up any object that's floating in water.
 
-If Ranger Jim falls in the water, the level is over and you have to restart.
+If Ranger Jim falls in the water, the level is over and you have to restart.  But don't worry, Ranger Jim won't walk into water--he stops at the shore automatically.
 
 
 Flinging
