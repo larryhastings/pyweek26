@@ -1047,6 +1047,9 @@ class Dam(Entity):
         level.on_dam_spawned(self)
 
     def on_blasted(self, bomb, position):
+        if self.occupant:
+            self.occupant.on_platform_moved(None)
+            self.occupant.on_blasted(bomb, position)
         super().on_blasted(bomb, position)
         self.actor.delete()
         pos = self.position
