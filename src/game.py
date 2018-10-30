@@ -995,9 +995,6 @@ class Entity:
     def on_platform_moved(self, position):
         pass
 
-    def on_blasted(self, bomb, position):
-        pass
-
     def on_pushed_into_something(self, other):
         pass
 
@@ -2050,6 +2047,7 @@ class TimedBomb(Bomb):
             self.spark.rotation += 1.5 * 360 * dt
 
     def on_frozen(self, bomb, position):
+        super().on_frozen(bomb, position)
         log(f"{self} has been frozen!  pause the countdowns.")
         self.set_freeze_timer(self.on_unfreeze)
         self.frozen = True
@@ -2158,6 +2156,7 @@ class ContactBomb(Bomb):
         return self.in_contact_with_entity(other)
 
     def on_frozen(self, bomb, position):
+        super().on_frozen(bomb, position)
         log(f"{self} has frozen!  desensitize to contact.")
         self.set_freeze_timer(self.on_unfreeze)
         if self.detonation_timer:
