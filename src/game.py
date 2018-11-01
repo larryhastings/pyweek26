@@ -464,6 +464,7 @@ class Level:
     DEFAULT = MapOOB
     loading = True
     suppress_esc = False
+    level_finished = False
 
     def set_map(self, map_data):
         self.map = map_data.tiles
@@ -522,7 +523,25 @@ class Level:
         if not self.dams_remaining:
             self.complete()
 
+    def player_died(self):
+        log(f"{self} player was harmed")
+        if self.level_finished:
+            return
+        self.level_finished = True
+        game.pause()
+        game_screen.display_big_text_and_wait("OOPS!")
+        game_screen.show_oops_bubble()
+        self.suppress_esc = True
+        self.on_space_pressed = reload_level
+
     def complete(self):
+        Timer("on_complete", game.logics, 1, self.on_complete_timer)
+
+    def on_complete_timer(self):
+        if self.level_finished:
+            return
+        self.level_finished = True
+
         if self.next == "finished":
             return self.game_won()
 
@@ -534,15 +553,11 @@ class Level:
         self.suppress_esc = True
         self.on_space_pressed = next_level
 
-    def player_died(self):
-        log(f"{self} player was harmed")
-        game.pause()
-        game_screen.display_big_text_and_wait("OOPS!")
-        game_screen.show_oops_bubble()
-        self.suppress_esc = True
-        self.on_space_pressed = reload_level
-
     def game_won(self):
+        if self.level_finished:
+            return
+        self.level_finished = True
+
         log(f"{self} you win!")
         game.pause()
         game_screen.hide_hud()
