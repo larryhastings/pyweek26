@@ -22,7 +22,12 @@ import os.path
 import subprocess
 
 argv0dir = os.path.dirname(sys.argv[0])
-srcdir = os.path.abspath(argv0dir + "/src")
+srcdir= os.path.normcase(os.path.abspath(__file__))
+slash = '\\' if '\\' in srcdir else '/'
+srcdir= srcdir.split(slash)
+srcdir.pop()
+srcdir.append('src')
+srcdir = slash.join(srcdir)
 os.chdir(srcdir)
 
 interpreter = sys.executable or "python3"
